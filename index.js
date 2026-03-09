@@ -354,13 +354,21 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // Команда: -rating <event_message_id>
+    // Команда: -rating (ответ на сообщение ивента)
     if (command === 'rating') {
-        const eventId = args[0];
-        
-        if (!eventId || !eventRatings.has(eventId)) {
+        // Проверяем, есть ли ответ на сообщение
+        if (!message.reference || !message.reference.messageId) {
             return message.reply({
-                content: '❌ Invalid event ID. React to the event message instead!',
+                content: '❌ Reply to an event message to view its rating!',
+                ephemeral: true
+            });
+        }
+        
+        const eventId = message.reference.messageId;
+        
+        if (!eventRatings.has(eventId)) {
+            return message.reply({
+                content: '❌ This is not a valid event message!',
                 ephemeral: true
             });
         }
@@ -372,7 +380,7 @@ client.on('messageCreate', async (message) => {
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
             .setTitle('📊 Event Rating')
-            .setDescription(`**Event ID:** \`${eventId}\`\n**Host:** <@${rating.host}>\n**Type:** ${EVENT_TYPES[rating.type].name} (${rating.robux} R$)`)
+            .setDescription(`**Host:** <@${rating.host}>\n**Type:** ${EVENT_TYPES[rating.type].name} (${rating.robux} R$)`)
             .addFields(
                 { name: '👍 Positive', value: `${rating.likes}`, inline: true },
                 { name: '👎 Negative', value: `${rating.dislikes}`, inline: true },
@@ -380,7 +388,7 @@ client.on('messageCreate', async (message) => {
             )
             .setTimestamp();
         
-        await message.reply({ embeds: [embed], ephemeral: true });
+        await message.reply({ embeds: [embed] });
         return;
     }
 
@@ -449,7 +457,7 @@ client.on('messageCreate', async (message) => {
                 { name: '-extreme <robux>', value: `Host Extreme event (${EVENT_TYPES.extreme.min}-${EVENT_TYPES.extreme.max} R$)`, inline: false },
                 { name: '-godly <robux>', value: `Host Godly event (${EVENT_TYPES.godly.min}-${EVENT_TYPES.godly.max} R$)`, inline: false },
                 { name: '-status [user]', value: 'View host statistics & rating', inline: false },
-                { name: '-rating <id>', value: 'View rating for specific event', inline: false },
+                { name: '-rating', value: 'Reply to event to view its rating', inline: false },
                 { name: '-toprating', value: 'Show top rated hosts', inline: false },
                 { name: '-help', value: 'Show this help message', inline: false },
                 { name: '**Admin Commands:**', value: 'Requires admin role (Creator, Head Admin, Co Owner)', inline: false },
