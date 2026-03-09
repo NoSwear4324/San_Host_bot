@@ -218,11 +218,11 @@ client.on('messageCreate', async (message) => {
         }
 
         const user = message.mentions.users.first();
-        const robux = parseInt(args[1]);
+        let robuxInput = args[1];
 
-        if (!user || !robux || robux < 0) {
+        if (!user || !robuxInput) {
             return message.reply({
-                content: '❌ Usage: `-setstats @user <robux>`',
+                content: '❌ Usage: `-setstats @user <robux>` or `-setstats @user -50` to subtract',
                 ephemeral: true
             });
         }
@@ -232,13 +232,30 @@ client.on('messageCreate', async (message) => {
         }
 
         const stats = hostStats.get(user.id);
-        stats.totalRobux = robux;
+        const currentRobux = stats.totalRobux;
+        
+        // Проверка: отрицательное число (отнимание) или положительное (установка)
+        let newRobux;
+        let message_text;
+        
+        if (robuxInput.startsWith('-')) {
+            // Отнимаем
+            const subtract = parseInt(robuxInput);
+            newRobux = Math.max(0, currentRobux + subtract); // subtract уже отрицательный
+            message_text = `✅ Removed **${Math.abs(subtract)} R$** from **${user.tag}**! (${currentRobux} → ${newRobux} R$)`;
+        } else {
+            // Устанавливаем
+            newRobux = parseInt(robuxInput);
+            message_text = `✅ Set **${user.tag}**'s total Robux to **${newRobux} R$**!`;
+        }
+
+        stats.totalRobux = newRobux;
 
         // Сохранение статистики
         saveStats();
 
         await message.reply({
-            content: `✅ Set **${user.tag}**'s total Robux to **${robux} R$**!`,
+            content: message_text,
             ephemeral: true
         });
         return;
