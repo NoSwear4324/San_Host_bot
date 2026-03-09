@@ -327,7 +327,7 @@ client.on('messageCreate', async (message) => {
             .setFooter({ text: 'Each event type has its own channel and role requirement' })
             .setTimestamp();
 
-        await message.channel.send({ embeds: [embed] });
+        await message.reply({ embeds: [embed], ephemeral: true });
         return;
     }
 });
