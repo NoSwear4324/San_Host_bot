@@ -92,7 +92,7 @@ client.on('clientReady', () => {
     console.log(`Bot logged in as ${client.user.tag}`);
     loadStats();
     client.user.setPresence({
-        activities: [{ name: '-community <robux>, -plus <robux>...', type: ActivityType.Watching }],
+        activities: [{ name: '-community, -plus, -super...', type: ActivityType.Watching }],
         status: 'online'
     });
 });
@@ -108,14 +108,21 @@ client.on('messageCreate', async (message) => {
     if (EVENT_TYPES[command]) {
         const eventType = command;
         const eventInfo = EVENT_TYPES[eventType];
-        const robux = parseInt(args[0]);
+        
+        // Если не указано число, используем минимальное значение
+        let robux;
+        if (!args[0] || isNaN(parseInt(args[0]))) {
+            robux = eventInfo.min;
+        } else {
+            robux = parseInt(args[0]);
+        }
 
         // Проверка канала
         const allowedChannelId = eventInfo.channelId;
         if (!allowedChannelId || allowedChannelId === `your_${eventType}_channel_id`) {
             return message.reply({ content: `❌ Channel ID not configured for ${eventInfo.name} events!`, ephemeral: true });
         }
-        
+
         if (message.channel.id !== allowedChannelId) {
             return message.reply({ content: `❌ You can only host ${eventInfo.name} events in <#${allowedChannelId}>!`, ephemeral: true });
         }
@@ -123,11 +130,11 @@ client.on('messageCreate', async (message) => {
         // Проверка на роль
         const member = message.member;
         const roleId = EVENT_ROLES[eventType];
-        
+
         if (!roleId || roleId === `your_${eventType}_role_id`) {
             return message.reply({ content: `❌ Role ID not configured for ${eventInfo.name} events!`, ephemeral: true });
         }
-        
+
         const hasRole = member.roles.cache.has(roleId);
 
         if (!hasRole) {
