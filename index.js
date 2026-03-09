@@ -338,13 +338,13 @@ client.on('messageCreate', async (message) => {
                 { name: '-status [user]', value: 'View host statistics', inline: false },
                 { name: '-help', value: 'Show this help message', inline: false },
                 { name: '**Admin Commands:**', value: 'Requires admin role(Creator, Head Admin, Co Owner)', inline: false },
-                { name: '-setstats @user <robux>', value: 'Set or subtract Robux (use -50 to subtract)', inline: false },
-                { name: '-seteventstats @user <type> <count>', value: 'Set event count for specific type (use -50 to subtract)', inline: false }
+                { name: '-setstats @user <robux>', value: 'Set Robux or use -50 to subtract', inline: false },
+                { name: '-seteventstats @user <type> <count>', value: 'Set events or use -5 to subtract', inline: false }
             )
             .setFooter({ text: 'Each event type has its own channel and role requirement' })
             .setTimestamp();
 
-        await message.reply({ embeds: [embed], ephemeral: true });
+        await message.channel.send({ embeds: [embed] });
         return;
     }
 });
