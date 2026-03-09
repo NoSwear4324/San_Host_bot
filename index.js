@@ -155,7 +155,19 @@ client.on('messageCreate', async (message) => {
         const pingRoleId = PING_ROLES[eventType];
         const rolePing = pingRoleId && pingRoleId !== `your_${eventType}_ping_role_id` ? `<@&${pingRoleId}>` : '';
 
-        const eventMessage = await message.channel.send(`${message.author} is starting a ${eventInfo.name} Event! (${robux} R$)\n\n${rolePing}`);
+        const embed = new EmbedBuilder()
+            .setColor(0x00AE86)
+            .setTitle(`🎮 ${eventInfo.name} Event`)
+            .setDescription(`${message.author} is starting a ${eventInfo.name} Event! (${robux} R$)\n\n${rolePing}`)
+            .addFields(
+                { name: '👍 Positive', value: '0', inline: true },
+                { name: '👎 Negative', value: '0', inline: true },
+                { name: '⭐ Score', value: 'No ratings yet', inline: true }
+            )
+            .setFooter({ text: 'React to rate this event' })
+            .setTimestamp();
+
+        const eventMessage = await message.channel.send({ embeds: [embed] });
         
         // Сохраняем информацию о рейтинге для этого сообщения
         eventRatings.set(eventMessage.id, {
@@ -164,7 +176,8 @@ client.on('messageCreate', async (message) => {
             robux: robux,
             likes: 0,
             dislikes: 0,
-            rated: []
+            rated: [],
+            embedMessageId: eventMessage.id
         });
         
         // Добавляем реакции
@@ -486,7 +499,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
         rating.dislikes++;
     }
     
-    // Обновляем сообщение с рейтингом
+    // Обновляем embed
     await updateRatingEmbed(reaction.message, rating);
 });
 
@@ -506,7 +519,7 @@ client.on('messageReactionRemove', async (reaction, user) => {
         rating.dislikes = Math.max(0, rating.dislikes - 1);
     }
     
-    // Обновляем сообщение с рейтингом
+    // Обновляем embed
     await updateRatingEmbed(reaction.message, rating);
 });
 
@@ -521,27 +534,24 @@ async function updateRatingEmbed(eventMessage, rating) {
         percent >= 70 ? '🥈 Silver' : 
         percent >= 60 ? '🥉 Bronze' : '⚠️ Low';
     
+    const color = totalRatings === 0 ? 0x00AE86 :
+        percent >= 70 ? 0x00FF00 : 
+        percent >= 60 ? 0xFFA500 : 0xFF0000;
+    
     const embed = new EmbedBuilder()
-        .setColor(percent >= 70 ? 0x00FF00 : percent >= 60 ? 0xFFA500 : 0xFF0000)
-        .setTitle('📊 Event Rating')
-        .setDescription(`**Host:** <@${rating.host}>\n**Rating:** ${ratingText}`)
+        .setColor(color)
+        .setTitle(`🎮 ${EVENT_TYPES[rating.type].name} Event`)
+        .setDescription(`<@${rating.host}> is hosting a ${EVENT_TYPES[rating.type].name} Event! (${rating.robux} R$)`)
         .addFields(
             { name: '👍 Positive', value: `${rating.likes}`, inline: true },
             { name: '👎 Negative', value: `${rating.dislikes}`, inline: true },
-            { name: '⭐ Score', value: `${percent}%`, inline: true }
+            { name: '⭐ Score', value: totalRatings === 0 ? 'No ratings yet' : `${percent}% (${ratingText})`, inline: true }
         )
-        .setFooter({ text: `Event ID: ${eventMessage.id}` })
+        .setFooter({ text: 'React to rate this event' })
         .setTimestamp();
     
-    // Ищем существующий embed и обновляем или создаём новый
     try {
-        const messages = await eventMessage.channel.messages.fetch({ limit: 1, around: eventMessage.id });
-        const msg = messages.find(m => m.id === eventMessage.id);
-        if (msg && msg.embeds.length > 0) {
-            await msg.edit({ embeds: [embed] });
-        } else if (msg) {
-            await msg.reply({ embeds: [embed] });
-        }
+        await eventMessage.edit({ embeds: [embed] });
     } catch (err) {
         console.error('Error updating rating embed:', err);
     }
