@@ -158,7 +158,7 @@ client.on('messageCreate', async (message) => {
         const embed = new EmbedBuilder()
             .setColor(0x00AE86)
             .setTitle(`🎮 ${eventInfo.name} Event`)
-            .setDescription(`${message.author} is starting a ${eventInfo.name} Event! (${robux} R$)\n\n${rolePing}`)
+            .setDescription(`${message.author} is starting a ${eventInfo.name} Event! (${robux} R$)`)
             .addFields(
                 { name: '👍 Positive', value: '0', inline: true },
                 { name: '👎 Negative', value: '0', inline: true },
@@ -167,7 +167,7 @@ client.on('messageCreate', async (message) => {
             .setFooter({ text: 'React to rate this event' })
             .setTimestamp();
 
-        const eventMessage = await message.channel.send({ embeds: [embed] });
+        const eventMessage = await message.channel.send({ content: rolePing || ' ', embeds: [embed] });
         
         // Сохраняем информацию о рейтинге для этого сообщения
         eventRatings.set(eventMessage.id, {
@@ -551,7 +551,10 @@ async function updateRatingEmbed(eventMessage, rating) {
         .setTimestamp();
     
     try {
-        await eventMessage.edit({ embeds: [embed] });
+        // Сохраняем пинг роли в content
+        const pingRoleId = PING_ROLES[rating.type];
+        const rolePing = pingRoleId && pingRoleId !== `your_${rating.type}_ping_role_id` ? `<@&${pingRoleId}>` : '';
+        await eventMessage.edit({ content: rolePing || ' ', embeds: [embed] });
     } catch (err) {
         console.error('Error updating rating embed:', err);
     }
