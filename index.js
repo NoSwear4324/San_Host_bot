@@ -320,7 +320,7 @@ client.on('messageCreate', async (message) => {
                 { name: '-godly <robux>', value: `Host Godly event (${EVENT_TYPES.godly.min}-${EVENT_TYPES.godly.max} R$)`, inline: false },
                 { name: '-status [user]', value: 'View host statistics', inline: false },
                 { name: '-help', value: 'Show this help message', inline: false },
-                { name: '**Admin Commands:**', value: 'Requires admin role', inline: false },
+                { name: '**Admin Commands:**', value: 'Requires admin role(Creator, Head Admin, Co Owner)', inline: false },
                 { name: '-setstats @user <robux>', value: 'Set or subtract Robux (use -50 to subtract)', inline: false },
                 { name: '-seteventstats @user <type> <count>', value: 'Set event count for specific type', inline: false }
             )
