@@ -155,7 +155,7 @@ client.on('messageCreate', async (message) => {
         const pingRoleId = PING_ROLES[eventType];
         const rolePing = pingRoleId && pingRoleId !== `your_${eventType}_ping_role_id` ? `<@&${pingRoleId}>` : '';
 
-        const eventMessage = await message.channel.send(`${message.author} is starting a ${eventInfo.name} Event! (${robux} R$)\n\n${rolePing}\n\n**React below to rate this event:**\n👍 Good | 👎 Bad`);
+        const eventMessage = await message.channel.send(`${message.author} is starting a ${eventInfo.name} Event! (${robux} R$)\n\n${rolePing}`);
         
         // Сохраняем информацию о рейтинге для этого сообщения
         eventRatings.set(eventMessage.id, {
@@ -166,6 +166,10 @@ client.on('messageCreate', async (message) => {
             dislikes: 0,
             rated: []
         });
+        
+        // Добавляем реакции
+        await eventMessage.react('👍');
+        await eventMessage.react('👎');
         
         return;
     }
@@ -354,44 +358,6 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // Команда: -rating (ответ на сообщение ивента)
-    if (command === 'rating') {
-        // Проверяем, есть ли ответ на сообщение
-        if (!message.reference || !message.reference.messageId) {
-            return message.reply({
-                content: '❌ Reply to an event message to view its rating!',
-                ephemeral: true
-            });
-        }
-        
-        const eventId = message.reference.messageId;
-        
-        if (!eventRatings.has(eventId)) {
-            return message.reply({
-                content: '❌ This is not a valid event message!',
-                ephemeral: true
-            });
-        }
-        
-        const rating = eventRatings.get(eventId);
-        const totalRatings = rating.likes + rating.dislikes;
-        const percent = totalRatings > 0 ? Math.round((rating.likes / totalRatings) * 100) : 0;
-        
-        const embed = new EmbedBuilder()
-            .setColor(0x0099FF)
-            .setTitle('📊 Event Rating')
-            .setDescription(`**Host:** <@${rating.host}>\n**Type:** ${EVENT_TYPES[rating.type].name} (${rating.robux} R$)`)
-            .addFields(
-                { name: '👍 Positive', value: `${rating.likes}`, inline: true },
-                { name: '👎 Negative', value: `${rating.dislikes}`, inline: true },
-                { name: '⭐ Rating', value: `${percent}% positive`, inline: true }
-            )
-            .setTimestamp();
-        
-        await message.reply({ embeds: [embed] });
-        return;
-    }
-
     // Команда: -toprating
     if (command === 'toprating') {
         // Считаем рейтинг для каждого хоста
@@ -457,7 +423,6 @@ client.on('messageCreate', async (message) => {
                 { name: '-extreme <robux>', value: `Host Extreme event (${EVENT_TYPES.extreme.min}-${EVENT_TYPES.extreme.max} R$)`, inline: false },
                 { name: '-godly <robux>', value: `Host Godly event (${EVENT_TYPES.godly.min}-${EVENT_TYPES.godly.max} R$)`, inline: false },
                 { name: '-status [user]', value: 'View host statistics & rating', inline: false },
-                { name: '-rating', value: 'Reply to event to view its rating', inline: false },
                 { name: '-toprating', value: 'Show top rated hosts', inline: false },
                 { name: '-help', value: 'Show this help message', inline: false },
                 { name: '**Admin Commands:**', value: 'Requires admin role (Creator, Head Admin, Co Owner)', inline: false },
@@ -496,18 +461,33 @@ client.on('messageReactionAdd', async (reaction, user) => {
     const rating = eventRatings.get(reaction.message.id);
     if (!rating) return;
     
-    // Если уже голосовал, убираем старый голос
+    // Если уже голосовал, сначала убираем старый голос
     if (rating.rated.includes(user.id)) {
-        return;
+        // Проверяем, какую реакцию поставили до этого
+        const cachedReaction = reaction.message.reactions.cache.find(r => 
+            r.users.cache.has(user.id) && r.emoji.name !== reaction.emoji.name
+        );
+        if (cachedReaction) {
+            await cachedReaction.users.remove(user.id);
+            if (cachedReaction.emoji.name === '👍') {
+                rating.likes = Math.max(0, rating.likes - 1);
+            } else {
+                rating.dislikes = Math.max(0, rating.dislikes - 1);
+            }
+        }
+    } else {
+        rating.rated.push(user.id);
     }
     
-    rating.rated.push(user.id);
-    
+    // Обновляем счётчик
     if (reaction.emoji.name === '👍') {
         rating.likes++;
     } else if (reaction.emoji.name === '👎') {
         rating.dislikes++;
     }
+    
+    // Обновляем сообщение с рейтингом
+    await updateRatingEmbed(reaction.message, rating);
 });
 
 client.on('messageReactionRemove', async (reaction, user) => {
@@ -525,6 +505,46 @@ client.on('messageReactionRemove', async (reaction, user) => {
     } else if (reaction.emoji.name === '👎') {
         rating.dislikes = Math.max(0, rating.dislikes - 1);
     }
+    
+    // Обновляем сообщение с рейтингом
+    await updateRatingEmbed(reaction.message, rating);
 });
+
+// Функция обновления сообщения с рейтингом
+async function updateRatingEmbed(eventMessage, rating) {
+    const totalRatings = rating.likes + rating.dislikes;
+    const percent = totalRatings > 0 ? Math.round((rating.likes / totalRatings) * 100) : 0;
+    
+    const ratingText = totalRatings === 0 ? 'No ratings yet' : 
+        percent >= 90 ? '🏆 Diamond' : 
+        percent >= 80 ? '🥇 Gold' : 
+        percent >= 70 ? '🥈 Silver' : 
+        percent >= 60 ? '🥉 Bronze' : '⚠️ Low';
+    
+    const embed = new EmbedBuilder()
+        .setColor(percent >= 70 ? 0x00FF00 : percent >= 60 ? 0xFFA500 : 0xFF0000)
+        .setTitle('📊 Event Rating')
+        .setDescription(`**Host:** <@${rating.host}>\n**Rating:** ${ratingText}`)
+        .addFields(
+            { name: '👍 Positive', value: `${rating.likes}`, inline: true },
+            { name: '👎 Negative', value: `${rating.dislikes}`, inline: true },
+            { name: '⭐ Score', value: `${percent}%`, inline: true }
+        )
+        .setFooter({ text: `Event ID: ${eventMessage.id}` })
+        .setTimestamp();
+    
+    // Ищем существующий embed и обновляем или создаём новый
+    try {
+        const messages = await eventMessage.channel.messages.fetch({ limit: 1, around: eventMessage.id });
+        const msg = messages.find(m => m.id === eventMessage.id);
+        if (msg && msg.embeds.length > 0) {
+            await msg.edit({ embeds: [embed] });
+        } else if (msg) {
+            await msg.reply({ embeds: [embed] });
+        }
+    } catch (err) {
+        console.error('Error updating rating embed:', err);
+    }
+}
 
 client.login(process.env.DISCORD_TOKEN);
