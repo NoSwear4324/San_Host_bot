@@ -6,7 +6,7 @@ Discord bot for hosting Roblox mini events with different tiers.
 
 | Command | Min Robux | Max Robux |
 |---------|-----------|-----------|
-| `-community <robux>` | 2 R$ | 25 R$ |
+| `-community <robux>` | 5 R$ | 25 R$ |
 | `-plus <robux>` | 25 R$ | 99 R$ |
 | `-super <robux>` | 100 R$ | 499 R$ |
 | `-ultra <robux>` | 500 R$ | 999 R$ |
@@ -16,6 +16,7 @@ Discord bot for hosting Roblox mini events with different tiers.
 
 ## Commands
 
+### Host Commands
 | Command | Description |
 |---------|-------------|
 | `-community <robux>` | Host a Community event (requires role) |
@@ -25,7 +26,16 @@ Discord bot for hosting Roblox mini events with different tiers.
 | `-ultimate <robux>` | Host an Ultimate event (requires role) |
 | `-extreme <robux>` | Host an Extreme event (requires role) |
 | `-godly <robux>` | Host a Godly event (requires role) |
-| `-status [user]` | View host statistics (requires any host role) |
+| `-status [user]` | View host statistics & rating |
+| `-rating <event_id>` | View rating for specific event |
+| `-toprating` | Show top rated hosts |
+| `-help` | Show all commands |
+
+### Admin Commands
+| Command | Description |
+|---------|-------------|
+| `-setstats @user <robux>` | Set Robux or use `-50` to subtract |
+| `-seteventstats @user <type> <count>` | Set events or use `-5` to subtract |
 
 ## Setup
 
@@ -58,6 +68,8 @@ Discord bot for hosting Roblox mini events with different tiers.
        plus: 'ping_role_id',
        // ... etc
    };
+
+   const ADMIN_ROLES = ['admin_role_id'];
    ```
 
 4. **Run the bot:**
@@ -71,6 +83,9 @@ Discord bot for hosting Roblox mini events with different tiers.
 User: -plus 50
 Bot: @User is starting a Plus Event! (50 R$)
      @ping_role
+     
+     React below to rate this event:
+     👍 Good | 👎 Bad
 ```
 
 ## Features
@@ -79,8 +94,20 @@ Bot: @User is starting a Plus Event! (50 R$)
 - ✅ Role required to host each event type
 - ✅ Custom Robux range for each tier
 - ✅ Host statistics saved permanently
+- ✅ Event rating system (👍/👎)
+- ✅ Host levels based on rating (Diamond, Gold, Silver, Bronze)
 - ✅ Error messages are ephemeral (only visible to sender)
-- ✅ Status command shows events by type
+- ✅ Status command shows events by type and rating
+
+## Rating Levels
+
+| Level | Requirement |
+|-------|-------------|
+| 🏆 Diamond Host | 90%+ positive |
+| 🥇 Gold Host | 80-89% positive |
+| 🥈 Silver Host | 70-79% positive |
+| 🥉 Bronze Host | 60-69% positive |
+| ⚠️ Low Rated Host | Below 60% positive |
 
 ## License
 

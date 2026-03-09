@@ -1,9 +1,3 @@
-const http = require('http');
-http.createServer((req, res) => {
-    res.write("I'm alive");
-    res.end();
-}).listen(8080);
-
 require('dotenv').config();
 const { Client, GatewayIntentBits, ActivityType, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
@@ -51,17 +45,16 @@ const PING_ROLES = {
 };
 
 // ID ролей для доступа к командам редактирования статистики
-const ADMIN_ROLES = [
-    '1475552294203424880', //Creator
-    '1475552827626619050', //Head admin
-    '1476518047438209076' //Co Owner
-];
+const ADMIN_ROLES = ['1480488494240366775'];
 
 // Путь к файлу статистики
 const STATS_FILE = path.join(__dirname, 'hostStats.json');
 
 // Статистика хостов
 let hostStats = new Map();
+
+// Хранилище рейтингов ивентов
+const eventRatings = new Map();
 
 // Загрузка статистики из файла
 function loadStats() {
@@ -162,26 +155,37 @@ client.on('messageCreate', async (message) => {
         const pingRoleId = PING_ROLES[eventType];
         const rolePing = pingRoleId && pingRoleId !== `your_${eventType}_ping_role_id` ? `<@&${pingRoleId}>` : '';
 
-        await message.channel.send(`${message.author} is starting a ${eventInfo.name} Event! (${robux} R$)\n\n${rolePing}`);
+        const eventMessage = await message.channel.send(`${message.author} is starting a ${eventInfo.name} Event! (${robux} R$)\n\n${rolePing}\n\n**React below to rate this event:**\n👍 Good | 👎 Bad`);
+        
+        // Сохраняем информацию о рейтинге для этого сообщения
+        eventRatings.set(eventMessage.id, {
+            host: message.author.id,
+            type: eventType,
+            robux: robux,
+            likes: 0,
+            dislikes: 0,
+            rated: []
+        });
+        
         return;
     }
 
     // Команда: -status [user]
     if (command === 'status') {
         const user = message.mentions.users.first() || message.author;
-        
+
         // Проверка: есть ли у пользователя любая роль хоста
         const member = message.member;
         const hostRoleIds = Object.values(EVENT_ROLES);
         const hasAnyHostRole = member.roles.cache.some(role => hostRoleIds.includes(role.id));
-        
+
         if (!hasAnyHostRole) {
-            return message.reply({ 
-                content: '❌ You need a host role to view stats!', 
-                ephemeral: true 
+            return message.reply({
+                content: '❌ You need a host role to view stats!',
+                ephemeral: true
             });
         }
-        
+
         const stats = hostStats.get(user.id) || createEmptyStats();
 
         let typeStats = '';
@@ -196,6 +200,27 @@ client.on('messageCreate', async (message) => {
             typeStats = 'No events hosted yet\n';
         }
 
+        // Подсчёт рейтинга
+        let totalLikes = 0;
+        let totalDislikes = 0;
+        eventRatings.forEach((rating, eventId) => {
+            if (rating.host === user.id) {
+                totalLikes += rating.likes;
+                totalDislikes += rating.dislikes;
+            }
+        });
+        
+        const totalRatings = totalLikes + totalDislikes;
+        const ratingPercent = totalRatings > 0 ? Math.round((totalLikes / totalRatings) * 100) : 0;
+        let ratingLevel = '⭐ No ratings yet';
+        if (totalRatings > 0) {
+            if (ratingPercent >= 90) ratingLevel = '🏆 Diamond Host';
+            else if (ratingPercent >= 80) ratingLevel = '🥇 Gold Host';
+            else if (ratingPercent >= 70) ratingLevel = '🥈 Silver Host';
+            else if (ratingPercent >= 60) ratingLevel = '🥉 Bronze Host';
+            else ratingLevel = '⚠️ Low Rated Host';
+        }
+
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
             .setTitle('📊 Host Status')
@@ -203,7 +228,8 @@ client.on('messageCreate', async (message) => {
             .addFields(
                 { name: '🎯 Total Events', value: `${stats.eventsHosted}`, inline: true },
                 { name: '💰 Total Robux', value: `${stats.totalRobux} R$`, inline: true },
-                { name: '**Events by Type:**', value: typeStats, inline: false }
+                { name: '**Events by Type:**', value: typeStats, inline: false },
+                { name: '⭐ Rating', value: `${ratingLevel}\n👍 ${totalLikes} | 👎 ${totalDislikes} (${ratingPercent}% positive)`, inline: false }
             )
             .setTimestamp();
 
@@ -328,6 +354,86 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
+    // Команда: -rating <event_message_id>
+    if (command === 'rating') {
+        const eventId = args[0];
+        
+        if (!eventId || !eventRatings.has(eventId)) {
+            return message.reply({
+                content: '❌ Invalid event ID. React to the event message instead!',
+                ephemeral: true
+            });
+        }
+        
+        const rating = eventRatings.get(eventId);
+        const totalRatings = rating.likes + rating.dislikes;
+        const percent = totalRatings > 0 ? Math.round((rating.likes / totalRatings) * 100) : 0;
+        
+        const embed = new EmbedBuilder()
+            .setColor(0x0099FF)
+            .setTitle('📊 Event Rating')
+            .setDescription(`**Event ID:** \`${eventId}\`\n**Host:** <@${rating.host}>\n**Type:** ${EVENT_TYPES[rating.type].name} (${rating.robux} R$)`)
+            .addFields(
+                { name: '👍 Positive', value: `${rating.likes}`, inline: true },
+                { name: '👎 Negative', value: `${rating.dislikes}`, inline: true },
+                { name: '⭐ Rating', value: `${percent}% positive`, inline: true }
+            )
+            .setTimestamp();
+        
+        await message.reply({ embeds: [embed], ephemeral: true });
+        return;
+    }
+
+    // Команда: -toprating
+    if (command === 'toprating') {
+        // Считаем рейтинг для каждого хоста
+        const hostRatings = new Map();
+        
+        eventRatings.forEach((rating) => {
+            if (!hostRatings.has(rating.host)) {
+                hostRatings.set(rating.host, { likes: 0, dislikes: 0, events: 0 });
+            }
+            const data = hostRatings.get(rating.host);
+            data.likes += rating.likes;
+            data.dislikes += rating.dislikes;
+            data.events++;
+        });
+        
+        // Сортируем по проценту положительных (минимум 5 голосов)
+        const sorted = Array.from(hostRatings.entries())
+            .filter(([_, data]) => data.likes + data.dislikes >= 5)
+            .map(([hostId, data]) => {
+                const total = data.likes + data.dislikes;
+                const percent = Math.round((data.likes / total) * 100);
+                return { hostId, likes: data.likes, dislikes: data.dislikes, percent, events: data.events };
+            })
+            .sort((a, b) => b.percent - a.percent || b.likes - a.likes)
+            .slice(0, 10);
+        
+        if (sorted.length === 0) {
+            return message.reply({
+                content: '❌ No ratings yet!',
+                ephemeral: true
+            });
+        }
+        
+        let leaderboard = '';
+        sorted.forEach((entry, index) => {
+            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+            leaderboard += `${medal} <@${entry.hostId}> - ${entry.percent}% (${entry.likes}👍 / ${entry.dislikes}👎) in ${entry.events} events\n`;
+        });
+        
+        const embed = new EmbedBuilder()
+            .setColor(0xFFD700)
+            .setTitle('🏆 Top Rated Hosts')
+            .setDescription(leaderboard)
+            .setFooter({ text: 'Minimum 5 ratings required' })
+            .setTimestamp();
+        
+        await message.reply({ embeds: [embed] });
+        return;
+    }
+
     // Команда: -help
     if (command === 'help') {
         const embed = new EmbedBuilder()
@@ -342,9 +448,11 @@ client.on('messageCreate', async (message) => {
                 { name: '-ultimate <robux>', value: `Host Ultimate event (${EVENT_TYPES.ultimate.min}-${EVENT_TYPES.ultimate.max} R$)`, inline: false },
                 { name: '-extreme <robux>', value: `Host Extreme event (${EVENT_TYPES.extreme.min}-${EVENT_TYPES.extreme.max} R$)`, inline: false },
                 { name: '-godly <robux>', value: `Host Godly event (${EVENT_TYPES.godly.min}-${EVENT_TYPES.godly.max} R$)`, inline: false },
-                { name: '-status [user]', value: 'View host statistics', inline: false },
+                { name: '-status [user]', value: 'View host statistics & rating', inline: false },
+                { name: '-rating <id>', value: 'View rating for specific event', inline: false },
+                { name: '-toprating', value: 'Show top rated hosts', inline: false },
                 { name: '-help', value: 'Show this help message', inline: false },
-                { name: '**Admin Commands:**', value: 'Requires admin role(Creator, Head Admin, Co Owner)', inline: false },
+                { name: '**Admin Commands:**', value: 'Requires admin role (Creator, Head Admin, Co Owner)', inline: false },
                 { name: '-setstats @user <robux>', value: 'Set Robux or use -50 to subtract', inline: false },
                 { name: '-seteventstats @user <type> <count>', value: 'Set events or use -5 to subtract', inline: false }
             )
@@ -371,5 +479,44 @@ function createEmptyStats() {
         }
     };
 }
+
+// Обработка реакций для рейтинга
+client.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot) return;
+    if (!['👍', '👎'].includes(reaction.emoji.name)) return;
+    
+    const rating = eventRatings.get(reaction.message.id);
+    if (!rating) return;
+    
+    // Если уже голосовал, убираем старый голос
+    if (rating.rated.includes(user.id)) {
+        return;
+    }
+    
+    rating.rated.push(user.id);
+    
+    if (reaction.emoji.name === '👍') {
+        rating.likes++;
+    } else if (reaction.emoji.name === '👎') {
+        rating.dislikes++;
+    }
+});
+
+client.on('messageReactionRemove', async (reaction, user) => {
+    if (user.bot) return;
+    if (!['👍', '👎'].includes(reaction.emoji.name)) return;
+    
+    const rating = eventRatings.get(reaction.message.id);
+    if (!rating) return;
+    
+    if (!rating.rated.includes(user.id)) return;
+    rating.rated = rating.rated.filter(id => id !== user.id);
+    
+    if (reaction.emoji.name === '👍') {
+        rating.likes = Math.max(0, rating.likes - 1);
+    } else if (reaction.emoji.name === '👎') {
+        rating.dislikes = Math.max(0, rating.dislikes - 1);
+    }
+});
 
 client.login(process.env.DISCORD_TOKEN);
