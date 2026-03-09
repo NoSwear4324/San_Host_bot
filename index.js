@@ -276,9 +276,9 @@ client.on('messageCreate', async (message) => {
 
         const user = message.mentions.users.first();
         const eventType = args[1]?.toLowerCase();
-        const count = parseInt(args[2]);
+        let countInput = args[2];
 
-        if (!user || !eventType || !EVENT_TYPES[eventType] || !count || count < 0) {
+        if (!user || !eventType || !EVENT_TYPES[eventType] || !countInput) {
             const types = Object.keys(EVENT_TYPES).join(', ');
             return message.reply({
                 content: `❌ Usage: \`-seteventstats @user <type> <count>\`\nTypes: ${types}`,
@@ -291,14 +291,31 @@ client.on('messageCreate', async (message) => {
         }
 
         const stats = hostStats.get(user.id);
-        stats.byType[eventType] = count;
+        const currentCount = stats.byType[eventType];
+        
+        // Проверка: отрицательное число (отнимание) или положительное (установка)
+        let newCount;
+        let message_text;
+        
+        if (countInput.startsWith('-')) {
+            // Отнимаем
+            const subtract = parseInt(countInput);
+            newCount = Math.max(0, currentCount + subtract); // subtract уже отрицательный
+            message_text = `✅ Removed **${Math.abs(subtract)} ${EVENT_TYPES[eventType].name}** events from **${user.tag}**! (${currentCount} → ${newCount})`;
+        } else {
+            // Устанавливаем
+            newCount = parseInt(countInput);
+            message_text = `✅ Set **${user.tag}**'s ${EVENT_TYPES[eventType].name} events to **${newCount}**!`;
+        }
+
+        stats.byType[eventType] = newCount;
         stats.eventsHosted = Object.values(stats.byType).reduce((a, b) => a + b, 0);
 
         // Сохранение статистики
         saveStats();
 
         await message.reply({
-            content: `✅ Set **${user.tag}**'s ${EVENT_TYPES[eventType].name} events to **${count}**!`,
+            content: message_text,
             ephemeral: true
         });
         return;
@@ -322,7 +339,7 @@ client.on('messageCreate', async (message) => {
                 { name: '-help', value: 'Show this help message', inline: false },
                 { name: '**Admin Commands:**', value: 'Requires admin role(Creator, Head Admin, Co Owner)', inline: false },
                 { name: '-setstats @user <robux>', value: 'Set or subtract Robux (use -50 to subtract)', inline: false },
-                { name: '-seteventstats @user <type> <count>', value: 'Set event count for specific type', inline: false }
+                { name: '-seteventstats @user <type> <count>', value: 'Set event count for specific type (use -50 to subtract)', inline: false }
             )
             .setFooter({ text: 'Each event type has its own channel and role requirement' })
             .setTimestamp();
