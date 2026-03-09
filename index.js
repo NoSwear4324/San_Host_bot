@@ -50,6 +50,13 @@ const PING_ROLES = {
     godly: '1480533912127017043'
 };
 
+// ID ролей для доступа к командам редактирования статистики
+const ADMIN_ROLES = [
+    '1475552294203424880',
+    '1475552827626619050',
+    '1476518047438209076'
+];
+
 // Путь к файлу статистики
 const STATS_FILE = path.join(__dirname, 'hostStats.json');
 
@@ -194,6 +201,89 @@ client.on('messageCreate', async (message) => {
             .setTimestamp();
 
         await message.reply({ embeds: [embed] });
+        return;
+    }
+
+    // Команда: -setstats <user> <robux>
+    if (command === 'setstats') {
+        // Проверка: есть ли у пользователя роль администратора
+        const member = message.member;
+        const hasAdminRole = member.roles.cache.some(role => ADMIN_ROLES.includes(role.id));
+
+        if (!hasAdminRole) {
+            return message.reply({
+                content: '❌ You don\'t have permission to use this command!',
+                ephemeral: true
+            });
+        }
+
+        const user = message.mentions.users.first();
+        const robux = parseInt(args[1]);
+
+        if (!user || !robux || robux < 0) {
+            return message.reply({
+                content: '❌ Usage: `-setstats @user <robux>`',
+                ephemeral: true
+            });
+        }
+
+        if (!hostStats.has(user.id)) {
+            hostStats.set(user.id, createEmptyStats());
+        }
+
+        const stats = hostStats.get(user.id);
+        stats.totalRobux = robux;
+
+        // Сохранение статистики
+        saveStats();
+
+        await message.reply({
+            content: `✅ Set **${user.tag}**'s total Robux to **${robux} R$**!`,
+            ephemeral: true
+        });
+        return;
+    }
+
+    // Команда: -seteventstats <user> <type> <count>
+    if (command === 'seteventstats') {
+        // Проверка: есть ли у пользователя роль администратора
+        const member = message.member;
+        const hasAdminRole = member.roles.cache.some(role => ADMIN_ROLES.includes(role.id));
+
+        if (!hasAdminRole) {
+            return message.reply({
+                content: '❌ You don\'t have permission to use this command!',
+                ephemeral: true
+            });
+        }
+
+        const user = message.mentions.users.first();
+        const eventType = args[1]?.toLowerCase();
+        const count = parseInt(args[2]);
+
+        if (!user || !eventType || !EVENT_TYPES[eventType] || !count || count < 0) {
+            const types = Object.keys(EVENT_TYPES).join(', ');
+            return message.reply({
+                content: `❌ Usage: \`-seteventstats @user <type> <count>\`\nTypes: ${types}`,
+                ephemeral: true
+            });
+        }
+
+        if (!hostStats.has(user.id)) {
+            hostStats.set(user.id, createEmptyStats());
+        }
+
+        const stats = hostStats.get(user.id);
+        stats.byType[eventType] = count;
+        stats.eventsHosted = Object.values(stats.byType).reduce((a, b) => a + b, 0);
+
+        // Сохранение статистики
+        saveStats();
+
+        await message.reply({
+            content: `✅ Set **${user.tag}**'s ${EVENT_TYPES[eventType].name} events to **${count}**!`,
+            ephemeral: true
+        });
         return;
     }
 });
