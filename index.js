@@ -24,7 +24,7 @@ const hostStatsSchema = new mongoose.Schema({
 });
 const HostStats = mongoose.model('HostStats', hostStatsSchema);
 
-// === НОВАЯ СХЕМА ДЛЯ СОХРАНЕНИЯ ИВЕНТОВ И РЕЙТИНГА ===
+// === СХЕМА ДЛЯ СОХРАНЕНИЯ ИВЕНТОВ И РЕЙТИНГА ===
 const eventRatingSchema = new mongoose.Schema({
     messageId: { type: String, required: true, unique: true },
     hostId: { type: String, required: true },
@@ -32,7 +32,7 @@ const eventRatingSchema = new mongoose.Schema({
     robux: { type: Number, default: 0 },
     likes: { type: Number, default: 0 },
     dislikes: { type: Number, default: 0 },
-    ratedUsers: [{ type: String }], // Кто уже проголосовал
+    ratedUsers: [{ type: String }],
     createdAt: { type: Date, default: Date.now }
 });
 const EventRating = mongoose.model('EventRating', eventRatingSchema);
@@ -78,7 +78,7 @@ const PING_ROLES = {
     godly: '1480533912127017043'
 };
 
-const ADMIN_ROLES = ['1480488494240366775'];
+const ADMIN_ROLES = ['1475552294203424880', '1475552827626619050'];
 
 // === ФУНКЦИИ БД ===
 async function getStats(userId) {
@@ -192,7 +192,6 @@ client.on(Events.MessageCreate, async (message) => {
             });
         }
 
-        // ✅ ОБНОВЛЕНИЕ СТАТИСТИКИ В БД
         await updateStats(message.author.id, {
             $inc: {
                 eventsHosted: 1,
@@ -201,9 +200,8 @@ client.on(Events.MessageCreate, async (message) => {
             }
         });
 
-        // ✅ СОЗДАНИЕ ЗАПИСИ РЕЙТИНГА В БД
         const ratingData = await EventRating.create({
-            messageId: '', // Будет обновлено после отправки
+            messageId: '',
             hostId: message.author.id,
             type: eventType,
             robux: robux,
@@ -229,7 +227,6 @@ client.on(Events.MessageCreate, async (message) => {
 
         const eventMessage = await message.channel.send({ content: rolePing || ' ', embeds: [embed] });
 
-        // ✅ ОБНОВЛЯЕМ ID СООБЩЕНИЯ В БД
         ratingData.messageId = eventMessage.id;
         await ratingData.save();
 
@@ -253,7 +250,6 @@ client.on(Events.MessageCreate, async (message) => {
 
         const stats = await getStats(user.id);
 
-        // ✅ ЗАГРУЗКА РЕЙТИНГА ИЗ БД
         const userEvents = await EventRating.find({ hostId: user.id });
         let totalLikes = 0;
         let totalDislikes = 0;
@@ -330,7 +326,6 @@ client.on(Events.MessageCreate, async (message) => {
         }
 
         await updateStats(user.id, { totalRobux: newRobux });
-
         await message.reply({ content: messageText, ephemeral: true });
         return;
     }
@@ -366,10 +361,7 @@ client.on(Events.MessageCreate, async (message) => {
             messageText = `✅ Set events to **${newCount}**!`;
         }
 
-        await updateStats(user.id, {
-            [`byType.${eventType}`]: newCount
-        });
-
+        await updateStats(user.id, { [`byType.${eventType}`]: newCount });
         const updatedStats = await getStats(user.id);
         const totalEvents = Object.values(updatedStats.byType).reduce((a, b) => a + b, 0);
         await updateStats(user.id, { eventsHosted: totalEvents });
@@ -380,7 +372,6 @@ client.on(Events.MessageCreate, async (message) => {
 
     // === КОМАНДА: -toprating ===
     if (command === 'toprating') {
-        // ✅ ЗАГРУЗКА ВСЕХ ИВЕНТОВ ИЗ БД
         const allEvents = await EventRating.find({});
         const hostRatings = new Map();
 
@@ -438,12 +429,14 @@ client.on(Events.MessageCreate, async (message) => {
                 { name: '-ultimate <robux>', value: `Host Ultimate event (${EVENT_TYPES.ultimate.min}-${EVENT_TYPES.ultimate.max} R$)`, inline: false },
                 { name: '-extreme <robux>', value: `Host Extreme event (${EVENT_TYPES.extreme.min}-${EVENT_TYPES.extreme.max} R$)`, inline: false },
                 { name: '-godly <robux>', value: `Host Godly event (${EVENT_TYPES.godly.min}-${EVENT_TYPES.godly.max} R$)`, inline: false },
-                { name: '-status [user]', value: 'View host statistics', inline: false },
+                { name: '-status [user]', value: 'View host statistics & rating', inline: false },
+                { name: '-toprating', value: 'Show top rated hosts', inline: false },
                 { name: '-help', value: 'Show this help message', inline: false },
                 { name: '**Admin Commands:**', value: 'Requires admin role', inline: false },
-                { name: '-setstats @user <robux>', value: 'Set or subtract Robux (use -50 to subtract)', inline: false },
-                { name: '-seteventstats @user <type> <count>', value: 'Set event count for specific type', inline: false }
+                { name: '-setstats @user <robux>', value: 'Set Robux or use -50 to subtract', inline: false },
+                { name: '-seteventstats @user <type> <count>', value: 'Set events or use -5 to subtract', inline: false }
             )
+            .setFooter({ text: 'Each event type has its own channel and role requirement' })
             .setTimestamp();
 
         await message.channel.send({ embeds: [embed] });
@@ -456,7 +449,6 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     if (user.bot) return;
     if (!['👍', '👎'].includes(reaction.emoji.name)) return;
 
-    // ✅ ИЩЕМ В БД ВМЕСТО MAP
     const rating = await EventRating.findOne({ messageId: reaction.message.id });
     if (!rating) return;
 
@@ -480,7 +472,6 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     if (reaction.emoji.name === '👍') rating.likes++;
     else if (reaction.emoji.name === '👎') rating.dislikes++;
 
-    // ✅ СОХРАНЯЕМ В БД
     await rating.save();
     await updateRatingEmbed(reaction.message, rating);
 });
@@ -489,7 +480,6 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
     if (user.bot) return;
     if (!['👍', '👎'].includes(reaction.emoji.name)) return;
 
-    // ✅ ИЩЕМ В БД ВМЕСТО MAP
     const rating = await EventRating.findOne({ messageId: reaction.message.id });
     if (!rating) return;
     if (!rating.ratedUsers.includes(user.id)) return;
@@ -499,7 +489,6 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
     if (reaction.emoji.name === '👍') rating.likes = Math.max(0, rating.likes - 1);
     else if (reaction.emoji.name === '👎') rating.dislikes = Math.max(0, rating.dislikes - 1);
 
-    // ✅ СОХРАНЯЕМ В БД
     await rating.save();
     await updateRatingEmbed(reaction.message, rating);
 });
