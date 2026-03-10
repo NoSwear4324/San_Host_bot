@@ -418,15 +418,18 @@ client.on(Events.MessageCreate, async (message) => {
             .setTitle('📖 RBX Host Bot Commands')
             .setDescription('**Host Commands:**')
             .addFields(
-                { name: '-community <robux>', value: `Host Community event (5-25 R$)`, inline: false },
-                { name: '-plus <robux>', value: `Host Plus event (25-99 R$)`, inline: false },
-                { name: '-super <robux>', value: `Host Super event (100-499 R$)`, inline: false },
+                { name: '-community <robux>', value: `Host Community event (${EVENT_TYPES.community.min}-${EVENT_TYPES.community.max} R$)`, inline: false },
+                { name: '-plus <robux>', value: `Host Plus event (${EVENT_TYPES.plus.min}-${EVENT_TYPES.plus.max} R$)`, inline: false },
+                { name: '-super <robux>', value: `Host Super event (${EVENT_TYPES.super.min}-${EVENT_TYPES.super.max} R$)`, inline: false },
+                { name: '-ultra <robux>', value: `Host Ultra event (${EVENT_TYPES.ultra.min}-${EVENT_TYPES.ultra.max} R$)`, inline: false },
+                { name: '-ultimate <robux>', value: `Host Ultimate event (${EVENT_TYPES.ultimate.min}-${EVENT_TYPES.ultimate.max} R$)`, inline: false },
+                { name: '-extreme <robux>', value: `Host Extreme event (${EVENT_TYPES.extreme.min}-${EVENT_TYPES.extreme.max} R$)`, inline: false },
+                { name: '-godly <robux>', value: `Host Godly event (${EVENT_TYPES.godly.min}-${EVENT_TYPES.godly.max} R$)`, inline: false },
                 { name: '-status [user]', value: 'View host statistics', inline: false },
-                { name: '-toprating', value: 'Show top rated hosts', inline: false },
-                { name: '-help', value: 'Show this help', inline: false },
+                { name: '-help', value: 'Show this help message', inline: false },
                 { name: '**Admin Commands:**', value: 'Requires admin role', inline: false },
-                { name: '-setstats @user <robux>', value: 'Set Robux or use -50 to subtract', inline: false },
-                { name: '-seteventstats @user <type> <count>', value: 'Set events or use -5 to subtract', inline: false }
+                { name: '-setstats @user <robux>', value: 'Set or subtract Robux (use -50 to subtract)', inline: false },
+                { name: '-seteventstats @user <type> <count>', value: 'Set event count for specific type', inline: false }
             )
             .setTimestamp();
 
