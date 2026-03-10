@@ -1,13 +1,15 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, ActivityType, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, Events } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
+// Инициализация клиента с правильными интентами (добавлен GuildMessageReactions)
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions // Важно для работы рейтинга!
     ]
 });
 
@@ -56,6 +58,19 @@ let hostStats = new Map();
 // Хранилище рейтингов ивентов
 const eventRatings = new Map();
 
+// --- Утилиты ---
+
+function createEmptyStats() {
+    return {
+        eventsHosted: 0,
+        totalRobux: 0,
+        byType: {
+            community: 0, plus: 0, super: 0, ultra: 0,
+            ultimate: 0, extreme: 0, godly: 0
+        }
+    };
+}
+
 // Загрузка статистики из файла
 function loadStats() {
     try {
@@ -81,7 +96,46 @@ function saveStats() {
     }
 }
 
-client.on('clientReady', () => {
+// Функция обновления сообщения с рейтингом
+async function updateRatingEmbed(eventMessage, rating) {
+    const totalRatings = rating.likes + rating.dislikes;
+    const percent = totalRatings > 0 ? Math.round((rating.likes / totalRatings) * 100) : 0;
+    
+    let ratingText = 'No ratings yet';
+    let color = 0x00AE86;
+
+    if (totalRatings > 0) {
+        if (percent >= 90) { ratingText = '🏆 Diamond'; color = 0xB9F2FF; }
+        else if (percent >= 80) { ratingText = '🥇 Gold'; color = 0xFFD700; }
+        else if (percent >= 70) { ratingText = '🥈 Silver'; color = 0xC0C0C0; }
+        else if (percent >= 60) { ratingText = '🥉 Bronze'; color = 0xCD7F32; }
+        else { ratingText = '⚠️ Low'; color = 0xFF4500; }
+    }
+
+    const embed = new EmbedBuilder()
+        .setColor(color)
+        .setTitle(`🎮 ${EVENT_TYPES[rating.type].name} Event`)
+        .setDescription(`<@${rating.host}> is hosting a ${EVENT_TYPES[rating.type].name} Event! (${rating.robux} R$)`)
+        .addFields(
+            { name: '👍 Positive', value: `${rating.likes}`, inline: true },
+            { name: '👎 Negative', value: `${rating.dislikes}`, inline: true },
+            { name: '⭐ Score', value: totalRatings === 0 ? 'No ratings yet' : `${percent}% (${ratingText})`, inline: true }
+        )
+        .setFooter({ text: 'React to rate this event' })
+        .setTimestamp();
+
+    try {
+        const pingRoleId = PING_ROLES[rating.type];
+        const rolePing = pingRoleId && !pingRoleId.includes('your_') ? `<@&${pingRoleId}>` : '';
+        await eventMessage.edit({ content: rolePing || ' ', embeds: [embed] });
+    } catch (err) {
+        console.error('Error updating rating embed:', err);
+    }
+}
+
+// --- События Клиента ---
+
+client.once(Events.ClientReady, () => {
     console.log(`Bot logged in as ${client.user.tag}`);
     loadStats();
     client.user.setPresence({
@@ -90,19 +144,20 @@ client.on('clientReady', () => {
     });
 });
 
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
-
+client.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot || !message.guild) return;
+    
     const prefix = '-';
+    if (!message.content.startsWith(prefix)) return;
+
     const args = message.content.slice(prefix.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // Проверка: является ли команда типом ивента
+    // 1. Проверка: является ли команда типом ивента 
     if (EVENT_TYPES[command]) {
         const eventType = command;
         const eventInfo = EVENT_TYPES[eventType];
         
-        // Если не указано число, используем минимальное значение
         let robux;
         if (!args[0] || isNaN(parseInt(args[0]))) {
             robux = eventInfo.min;
@@ -112,7 +167,7 @@ client.on('messageCreate', async (message) => {
 
         // Проверка канала
         const allowedChannelId = eventInfo.channelId;
-        if (!allowedChannelId || allowedChannelId === `your_${eventType}_channel_id`) {
+        if (!allowedChannelId || allowedChannelId.includes('your_')) {
             return message.reply({ content: `❌ Channel ID not configured for ${eventInfo.name} events!`, ephemeral: true });
         }
 
@@ -122,21 +177,24 @@ client.on('messageCreate', async (message) => {
 
         // Проверка на роль
         const member = message.member;
-        const roleId = EVENT_ROLES[eventType];
+        if (!member) return;
 
-        if (!roleId || roleId === `your_${eventType}_role_id`) {
+        const roleId = EVENT_ROLES[eventType];
+        if (!roleId || roleId.includes('your_')) {
             return message.reply({ content: `❌ Role ID not configured for ${eventInfo.name} events!`, ephemeral: true });
         }
 
         const hasRole = member.roles.cache.has(roleId);
-
         if (!hasRole) {
             return message.reply({ content: `❌ You need the ${eventInfo.name} role to host ${eventInfo.name} events!`, ephemeral: true });
         }
 
         // Проверка цены
         if (!robux || robux < eventInfo.min || robux > eventInfo.max) {
-            return message.reply({ content: `❌ Invalid Robux amount! For ${eventInfo.name}: ${eventInfo.min}-${eventInfo.max} R$\nExample: \`-${command} ${eventInfo.min}\``, ephemeral: true });
+            return message.reply({ 
+                content: `❌ Invalid Robux amount! For ${eventInfo.name}: ${eventInfo.min}-${eventInfo.max} R$\nExample: \`-${command} ${eventInfo.min}\``, 
+                ephemeral: true 
+            });
         }
 
         // Обновление статистики хоста
@@ -148,12 +206,11 @@ client.on('messageCreate', async (message) => {
         stats.totalRobux += robux;
         stats.byType[eventType]++;
 
-        // Сохранение статистики
         saveStats();
 
         // Пинг роли для этого типа ивента
         const pingRoleId = PING_ROLES[eventType];
-        const rolePing = pingRoleId && pingRoleId !== `your_${eventType}_ping_role_id` ? `<@&${pingRoleId}>` : '';
+        const rolePing = pingRoleId && !pingRoleId.includes('your_') ? `<@&${pingRoleId}>` : '';
 
         const embed = new EmbedBuilder()
             .setColor(0x00AE86)
@@ -187,20 +244,17 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // Команда: -status [user]
+    // 2. Команда: -status [user]
     if (command === 'status') {
         const user = message.mentions.users.first() || message.author;
-
-        // Проверка: есть ли у пользователя любая роль хоста
         const member = message.member;
+        if (!member) return;
+
         const hostRoleIds = Object.values(EVENT_ROLES);
         const hasAnyHostRole = member.roles.cache.some(role => hostRoleIds.includes(role.id));
 
         if (!hasAnyHostRole) {
-            return message.reply({
-                content: '❌ You need a host role to view stats!',
-                ephemeral: true
-            });
+            return message.reply({ content: '❌ You need a host role to view stats!', ephemeral: true });
         }
 
         const stats = hostStats.get(user.id) || createEmptyStats();
@@ -212,15 +266,12 @@ client.on('messageCreate', async (message) => {
                 typeStats += `${eventName}: ${count} events\n`;
             }
         }
-
-        if (!typeStats) {
-            typeStats = 'No events hosted yet\n';
-        }
+        if (!typeStats) typeStats = 'No events hosted yet\n';
 
         // Подсчёт рейтинга
         let totalLikes = 0;
         let totalDislikes = 0;
-        eventRatings.forEach((rating, eventId) => {
+        eventRatings.forEach((rating) => {
             if (rating.host === user.id) {
                 totalLikes += rating.likes;
                 totalDislikes += rating.dislikes;
@@ -229,6 +280,7 @@ client.on('messageCreate', async (message) => {
         
         const totalRatings = totalLikes + totalDislikes;
         const ratingPercent = totalRatings > 0 ? Math.round((totalLikes / totalRatings) * 100) : 0;
+        
         let ratingLevel = '⭐ No ratings yet';
         if (totalRatings > 0) {
             if (ratingPercent >= 90) ratingLevel = '🏆 Diamond Host';
@@ -254,27 +306,21 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // Команда: -setstats <user> <robux>
+    // 3. Команда: -setstats <user> <robux>
     if (command === 'setstats') {
-        // Проверка: есть ли у пользователя роль администратора
         const member = message.member;
-        const hasAdminRole = member.roles.cache.some(role => ADMIN_ROLES.includes(role.id));
+        if (!member) return;
 
+        const hasAdminRole = member.roles.cache.some(role => ADMIN_ROLES.includes(role.id));
         if (!hasAdminRole) {
-            return message.reply({
-                content: '❌ You don\'t have permission to use this command!',
-                ephemeral: true
-            });
+            return message.reply({ content: '❌ You don\'t have permission to use this command!', ephemeral: true });
         }
 
         const user = message.mentions.users.first();
         let robuxInput = args[1];
 
         if (!user || !robuxInput) {
-            return message.reply({
-                content: '❌ Usage: `-setstats @user <robux>` or `-setstats @user -50` to subtract',
-                ephemeral: true
-            });
+            return message.reply({ content: '❌ Usage: `-setstats @user <robux>` or `-setstats @user -50` to subtract', ephemeral: true });
         }
 
         if (!hostStats.has(user.id)) {
@@ -284,44 +330,33 @@ client.on('messageCreate', async (message) => {
         const stats = hostStats.get(user.id);
         const currentRobux = stats.totalRobux;
         
-        // Проверка: отрицательное число (отнимание) или положительное (установка)
         let newRobux;
-        let message_text;
+        let messageText;
         
         if (robuxInput.startsWith('-')) {
-            // Отнимаем
             const subtract = parseInt(robuxInput);
-            newRobux = Math.max(0, currentRobux + subtract); // subtract уже отрицательный
-            message_text = `✅ Removed **${Math.abs(subtract)} R$** from **${user.tag}**! (${currentRobux} → ${newRobux} R$)`;
+            newRobux = Math.max(0, currentRobux + subtract);
+            messageText = `✅ Removed **${Math.abs(subtract)} R$** from **${user.tag}**! (${currentRobux} → ${newRobux} R$)`;
         } else {
-            // Устанавливаем
             newRobux = parseInt(robuxInput);
-            message_text = `✅ Set **${user.tag}**'s total Robux to **${newRobux} R$**!`;
+            messageText = `✅ Set **${user.tag}**'s total Robux to **${newRobux} R$**!`;
         }
 
         stats.totalRobux = newRobux;
-
-        // Сохранение статистики
         saveStats();
 
-        await message.reply({
-            content: message_text,
-            ephemeral: true
-        });
+        await message.reply({ content: messageText, ephemeral: true });
         return;
     }
 
-    // Команда: -seteventstats <user> <type> <count>
+    // 4. Команда: -seteventstats <user> <type> <count>
     if (command === 'seteventstats') {
-        // Проверка: есть ли у пользователя роль администратора
         const member = message.member;
-        const hasAdminRole = member.roles.cache.some(role => ADMIN_ROLES.includes(role.id));
+        if (!member) return;
 
+        const hasAdminRole = member.roles.cache.some(role => ADMIN_ROLES.includes(role.id));
         if (!hasAdminRole) {
-            return message.reply({
-                content: '❌ You don\'t have permission to use this command!',
-                ephemeral: true
-            });
+            return message.reply({ content: '❌ You don\'t have permission to use this command!', ephemeral: true });
         }
 
         const user = message.mentions.users.first();
@@ -330,10 +365,7 @@ client.on('messageCreate', async (message) => {
 
         if (!user || !eventType || !EVENT_TYPES[eventType] || !countInput) {
             const types = Object.keys(EVENT_TYPES).join(', ');
-            return message.reply({
-                content: `❌ Usage: \`-seteventstats @user <type> <count>\`\nTypes: ${types}`,
-                ephemeral: true
-            });
+            return message.reply({ content: `❌ Usage: \`-seteventstats @user <type> <count>\`\nTypes: ${types}`, ephemeral: true });
         }
 
         if (!hostStats.has(user.id)) {
@@ -341,39 +373,30 @@ client.on('messageCreate', async (message) => {
         }
 
         const stats = hostStats.get(user.id);
-        const currentCount = stats.byType[eventType];
+        const currentCount = stats.byType[eventType] || 0;
         
-        // Проверка: отрицательное число (отнимание) или положительное (установка)
         let newCount;
-        let message_text;
+        let messageText;
         
         if (countInput.startsWith('-')) {
-            // Отнимаем
             const subtract = parseInt(countInput);
-            newCount = Math.max(0, currentCount + subtract); // subtract уже отрицательный
-            message_text = `✅ Removed **${Math.abs(subtract)} ${EVENT_TYPES[eventType].name}** events from **${user.tag}**! (${currentCount} → ${newCount})`;
+            newCount = Math.max(0, currentCount + subtract);
+            messageText = `✅ Removed **${Math.abs(subtract)} ${EVENT_TYPES[eventType].name}** events from **${user.tag}**! (${currentCount} → ${newCount})`;
         } else {
-            // Устанавливаем
             newCount = parseInt(countInput);
-            message_text = `✅ Set **${user.tag}**'s ${EVENT_TYPES[eventType].name} events to **${newCount}**!`;
+            messageText = `✅ Set **${user.tag}**'s ${EVENT_TYPES[eventType].name} events to **${newCount}**!`;
         }
 
         stats.byType[eventType] = newCount;
         stats.eventsHosted = Object.values(stats.byType).reduce((a, b) => a + b, 0);
-
-        // Сохранение статистики
         saveStats();
 
-        await message.reply({
-            content: message_text,
-            ephemeral: true
-        });
+        await message.reply({ content: messageText, ephemeral: true });
         return;
     }
 
-    // Команда: -toprating
+    // 5. Команда: -toprating
     if (command === 'toprating') {
-        // Считаем рейтинг для каждого хоста
         const hostRatings = new Map();
         
         eventRatings.forEach((rating) => {
@@ -386,7 +409,6 @@ client.on('messageCreate', async (message) => {
             data.events++;
         });
         
-        // Сортируем по проценту положительных (минимум 5 голосов)
         const sorted = Array.from(hostRatings.entries())
             .filter(([_, data]) => data.likes + data.dislikes >= 5)
             .map(([hostId, data]) => {
@@ -398,10 +420,7 @@ client.on('messageCreate', async (message) => {
             .slice(0, 10);
         
         if (sorted.length === 0) {
-            return message.reply({
-                content: '❌ No ratings yet!',
-                ephemeral: true
-            });
+            return message.reply({ content: '❌ No ratings yet (min 5 votes required)!', ephemeral: true });
         }
         
         let leaderboard = '';
@@ -421,7 +440,7 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // Команда: -help
+    // 6. Команда: -help
     if (command === 'help') {
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
@@ -438,7 +457,7 @@ client.on('messageCreate', async (message) => {
                 { name: '-status [user]', value: 'View host statistics & rating', inline: false },
                 { name: '-toprating', value: 'Show top rated hosts', inline: false },
                 { name: '-help', value: 'Show this help message', inline: false },
-                { name: '**Admin Commands:**', value: 'Requires admin role (Creator, Head Admin, Co Owner)', inline: false },
+                { name: '**Admin Commands:**', value: 'Requires admin role', inline: false },
                 { name: '-setstats @user <robux>', value: 'Set Robux or use -50 to subtract', inline: false },
                 { name: '-seteventstats @user <type> <count>', value: 'Set events or use -5 to subtract', inline: false }
             )
@@ -450,114 +469,57 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-function createEmptyStats() {
-    return {
-        eventsHosted: 0,
-        totalRobux: 0,
-        byType: {
-            community: 0,
-            plus: 0,
-            super: 0,
-            ultra: 0,
-            ultimate: 0,
-            extreme: 0,
-            godly: 0
-        }
-    };
-}
+// --- Обработка реакций для рейтинга ---
 
-// Обработка реакций для рейтинга
-client.on('messageReactionAdd', async (reaction, user) => {
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
     if (user.bot) return;
     if (!['👍', '👎'].includes(reaction.emoji.name)) return;
-    
+
     const rating = eventRatings.get(reaction.message.id);
     if (!rating) return;
-    
+
     // Если уже голосовал, сначала убираем старый голос
     if (rating.rated.includes(user.id)) {
-        // Проверяем, какую реакцию поставили до этого
-        const cachedReaction = reaction.message.reactions.cache.find(r => 
-            r.users.cache.has(user.id) && r.emoji.name !== reaction.emoji.name
-        );
-        if (cachedReaction) {
-            await cachedReaction.users.remove(user.id);
-            if (cachedReaction.emoji.name === '👍') {
-                rating.likes = Math.max(0, rating.likes - 1);
-            } else {
-                rating.dislikes = Math.max(0, rating.dislikes - 1);
+        const msg = reaction.message;
+        const otherEmoji = reaction.emoji.name === '👍' ? '👎' : '👍';
+        const otherReaction = msg.reactions.resolve(otherEmoji);
+        
+        if (otherReaction) {
+            const users = await otherReaction.users.fetch();
+            if (users.has(user.id)) {
+                await otherReaction.users.remove(user.id);
+                if (otherEmoji === '👍') rating.likes = Math.max(0, rating.likes - 1);
+                else rating.dislikes = Math.max(0, rating.dislikes - 1);
             }
         }
     } else {
         rating.rated.push(user.id);
     }
-    
+
     // Обновляем счётчик
-    if (reaction.emoji.name === '👍') {
-        rating.likes++;
-    } else if (reaction.emoji.name === '👎') {
-        rating.dislikes++;
-    }
-    
+    if (reaction.emoji.name === '👍') rating.likes++;
+    else if (reaction.emoji.name === '👎') rating.dislikes++;
+
     // Обновляем embed
     await updateRatingEmbed(reaction.message, rating);
 });
 
-client.on('messageReactionRemove', async (reaction, user) => {
+client.on(Events.MessageReactionRemove, async (reaction, user) => {
     if (user.bot) return;
     if (!['👍', '👎'].includes(reaction.emoji.name)) return;
-    
+
     const rating = eventRatings.get(reaction.message.id);
     if (!rating) return;
-    
     if (!rating.rated.includes(user.id)) return;
+
     rating.rated = rating.rated.filter(id => id !== user.id);
-    
-    if (reaction.emoji.name === '👍') {
-        rating.likes = Math.max(0, rating.likes - 1);
-    } else if (reaction.emoji.name === '👎') {
-        rating.dislikes = Math.max(0, rating.dislikes - 1);
-    }
-    
+
+    if (reaction.emoji.name === '👍') rating.likes = Math.max(0, rating.likes - 1);
+    else if (reaction.emoji.name === '👎') rating.dislikes = Math.max(0, rating.dislikes - 1);
+
     // Обновляем embed
     await updateRatingEmbed(reaction.message, rating);
 });
 
-// Функция обновления сообщения с рейтингом
-async function updateRatingEmbed(eventMessage, rating) {
-    const totalRatings = rating.likes + rating.dislikes;
-    const percent = totalRatings > 0 ? Math.round((rating.likes / totalRatings) * 100) : 0;
-    
-    const ratingText = totalRatings === 0 ? 'No ratings yet' : 
-        percent >= 90 ? '🏆 Diamond' : 
-        percent >= 80 ? '🥇 Gold' : 
-        percent >= 70 ? '🥈 Silver' : 
-        percent >= 60 ? '🥉 Bronze' : '⚠️ Low';
-    
-    const color = totalRatings === 0 ? 0x00AE86 :
-        percent >= 70 ? 0x00FF00 : 
-        percent >= 60 ? 0xFFA500 : 0xFF0000;
-    
-    const embed = new EmbedBuilder()
-        .setColor(color)
-        .setTitle(`🎮 ${EVENT_TYPES[rating.type].name} Event`)
-        .setDescription(`<@${rating.host}> is hosting a ${EVENT_TYPES[rating.type].name} Event! (${rating.robux} R$)`)
-        .addFields(
-            { name: '👍 Positive', value: `${rating.likes}`, inline: true },
-            { name: '👎 Negative', value: `${rating.dislikes}`, inline: true },
-            { name: '⭐ Score', value: totalRatings === 0 ? 'No ratings yet' : `${percent}% (${ratingText})`, inline: true }
-        )
-        .setFooter({ text: 'React to rate this event' })
-        .setTimestamp();
-    
-    try {
-        // Сохраняем пинг роли в content
-        const pingRoleId = PING_ROLES[rating.type];
-        const rolePing = pingRoleId && pingRoleId !== `your_${rating.type}_ping_role_id` ? `<@&${pingRoleId}>` : '';
-        await eventMessage.edit({ content: rolePing || ' ', embeds: [embed] });
-    } catch (err) {
-        console.error('Error updating rating embed:', err);
-    }
-}
-
+// Запуск
 client.login(process.env.DISCORD_TOKEN);
