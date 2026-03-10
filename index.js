@@ -2,7 +2,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, Events } = require('discord.js');
 const mongoose = require('mongoose');
 
-// === ПОДКЛЮЧЕНИЕ К MONGODB ===
+// === ПОДКЛЮЧЕНИЕ К MONGODB (Railway) ===
 mongoose.connect(process.env.MONGO_URL)
     .then(() => console.log('✅ MongoDB connected'))
     .catch(err => console.error('❌ MongoDB error:', err));
@@ -181,6 +181,7 @@ client.on(Events.MessageCreate, async (message) => {
             return message.reply({ content: `❌ Role ID not configured!`, ephemeral: true });
         }
 
+        // ✅ ИСПРАВЛЕНО: убран пробел в .has()
         if (!member.roles.cache.has(roleId)) {
             return message.reply({ content: `❌ You need the ${eventInfo.name} role!`, ephemeral: true });
         }
@@ -242,6 +243,7 @@ client.on(Events.MessageCreate, async (message) => {
         if (!member) return;
 
         const hostRoleIds = Object.values(EVENT_ROLES);
+        // ✅ ИСПРАВЛЕНО: убран пробел в =>
         const hasAnyHostRole = member.roles.cache.some(role => hostRoleIds.includes(role.id));
 
         if (!hasAnyHostRole) {
