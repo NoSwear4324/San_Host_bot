@@ -463,7 +463,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
 client.on(Events.MessageReactionRemove, async (reaction, user) => {
     if (user.bot) return;
-    if (!['👍', ''].includes(reaction.emoji.name)) return;
+    if (!['👍', '👎'].includes(reaction.emoji.name)) return;
 
     const rating = eventRatings.get(reaction.message.id);
     if (!rating) return;
