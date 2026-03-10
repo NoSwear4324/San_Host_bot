@@ -420,7 +420,10 @@ client.on(Events.MessageCreate, async (message) => {
                 { name: '-super <robux>', value: `Host Super event (100-499 R$)`, inline: false },
                 { name: '-status [user]', value: 'View host statistics', inline: false },
                 { name: '-toprating', value: 'Show top rated hosts', inline: false },
-                { name: '-help', value: 'Show this help', inline: false }
+                { name: '-help', value: 'Show this help', inline: false },
+                { name: '**Admin Commands:**', value: 'Requires admin role', inline: false },
+                { name: '-setstats @user <robux>', value: 'Set Robux or use -50 to subtract', inline: false },
+                { name: '-seteventstats @user <type> <count>', value: 'Set events or use -5 to subtract', inline: false }
             )
             .setTimestamp();
 
