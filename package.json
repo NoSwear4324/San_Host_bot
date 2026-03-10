@@ -9,9 +9,15 @@
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "dotenv": "^16.4.1"
+    "dotenv": "^16.4.1",
+    "mongoose": "^9.2.4"
   },
-  "keywords": ["discord", "bot", "roblox", "host"],
+  "keywords": [
+    "discord",
+    "bot",
+    "roblox",
+    "host"
+  ],
   "author": "",
   "license": "ISC"
 }
