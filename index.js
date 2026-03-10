@@ -66,7 +66,10 @@ const PING_ROLES = {
     godly: '1480533912127017043'
 };
 
-const ADMIN_ROLES = ['1480488494240366775'];
+const ADMIN_ROLES = [
+    '1475552294203424880',
+    '1475552827626619050'
+];
 const eventRatings = new Map();
 
 // === ФУНКЦИИ БД ===
