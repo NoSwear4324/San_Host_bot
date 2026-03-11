@@ -1,5 +1,14 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    ActivityType, 
+    EmbedBuilder, 
+    Events, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle 
+} = require('discord.js');
 const { MongoClient } = require('mongodb');
 
 const client = new Client({
@@ -42,159 +51,195 @@ const PING_ROLES = {
     godly: '1480533912127017043'
 };
 
-const ADMIN_ROLES = ['1475552294203424880', '1475552827626619050'];
-
 // --- MongoDB ---
 const mongo = new MongoClient(process.env.MONGO_URI);
 let db, hostStatsCol, eventRatingsCol;
 
 async function initMongo() {
-    await mongo.connect();
-    db = mongo.db(process.env.DB_NAME);
-    hostStatsCol = db.collection('hostStats');
-    eventRatingsCol = db.collection('eventRatings');
+    try {
+        await mongo.connect();
+        db = mongo.db(process.env.DB_NAME || 'bot_database');
+        hostStatsCol = db.collection('hostStats');
+        eventRatingsCol = db.collection('eventRatings');
+        console.log('✅ Connected to MongoDB');
+    } catch (err) {
+        console.error('❌ MongoDB Connection Error:', err);
+        process.exit(1); // Останавливаем процесс, если БД недоступна
+    }
 }
 
 // --- Утилиты ---
-async function getHostStats(userId){
+async function getHostStats(userId) {
     let stats = await hostStatsCol.findOne({ _id: userId });
-    if(!stats){
-        stats = { _id: userId, eventsHosted: 0, totalRobux: 0, byType: { community:0, plus:0, super:0, ultra:0, ultimate:0, extreme:0, godly:0 } };
+    if (!stats) {
+        stats = { 
+            _id: userId, 
+            eventsHosted: 0, 
+            totalRobux: 0, 
+            byType: { community:0, plus:0, super:0, ultra:0, ultimate:0, extreme:0, godly:0 } 
+        };
         await hostStatsCol.insertOne(stats);
     }
     return stats;
 }
 
-async function updateHostStats(stats){
-    await hostStatsCol.updateOne({ _id: stats._id }, { $set: stats }, { upsert:true });
-}
-
-async function getEventRating(messageId){
-    let rating = await eventRatingsCol.findOne({ _id: messageId });
-    if(!rating){
-        rating = null;
-    }
-    return rating;
-}
-
-async function updateEventRating(rating){
-    await eventRatingsCol.updateOne({ _id: rating._id }, { $set: rating }, { upsert:true });
-}
-
-async function updateRatingEmbed(eventMessage, rating){
+async function updateRatingEmbed(eventMessage, rating) {
     const totalRatings = rating.likes + rating.dislikes;
-    const percent = totalRatings>0 ? Math.round(rating.likes/totalRatings*100):0;
+    const percent = totalRatings > 0 ? Math.round((rating.likes / totalRatings) * 100) : 0;
 
-    let ratingText='No ratings yet', color=0x00AE86;
-    if(totalRatings>0){
-        if(percent>=90){ratingText='🏆 Diamond';color=0xB9F2FF;}
-        else if(percent>=80){ratingText='🥇 Gold';color=0xFFD700;}
-        else if(percent>=70){ratingText='🥈 Silver';color=0xC0C0C0;}
-        else if(percent>=60){ratingText='🥉 Bronze';color=0xCD7F32;}
-        else {ratingText='⚠️ Low';color=0xFF4500;}
+    let ratingText = 'No ratings yet', color = 0x00AE86;
+    if (totalRatings > 0) {
+        if (percent >= 90) { ratingText = '🏆 Diamond'; color = 0xB9F2FF; }
+        else if (percent >= 80) { ratingText = '🥇 Gold'; color = 0xFFD700; }
+        else if (percent >= 70) { ratingText = '🥈 Silver'; color = 0xC0C0C0; }
+        else if (percent >= 60) { ratingText = '🥉 Bronze'; color = 0xCD7F32; }
+        else { ratingText = '⚠️ Low'; color = 0xFF4500; }
     }
 
-    const embed=new EmbedBuilder()
+    const embed = new EmbedBuilder()
         .setColor(color)
         .setTitle(`🎮 ${EVENT_TYPES[rating.type].name} Event`)
         .setDescription(`<@${rating.host}> is hosting a ${EVENT_TYPES[rating.type].name} Event! (${rating.robux} R$)`)
         .addFields(
-            { name:'👍 Positive', value:`${rating.likes}`, inline:true },
-            { name:'👎 Negative', value:`${rating.dislikes}`, inline:true },
-            { name:'⭐ Score', value: totalRatings===0?'No ratings yet':`${percent}% (${ratingText})`, inline:true }
+            { name: '👍 Positive', value: `${rating.likes}`, inline: true },
+            { name: '👎 Negative', value: `${rating.dislikes}`, inline: true },
+            { name: '⭐ Score', value: totalRatings === 0 ? 'No ratings yet' : `${percent}% (${ratingText})`, inline: true }
         )
-        .setFooter({ text:'React to rate this event' })
+        .setFooter({ text: 'Use buttons below to rate' })
         .setTimestamp();
 
     const rolePing = PING_ROLES[rating.type] ? `<@&${PING_ROLES[rating.type]}>` : '';
-    await eventMessage.edit({ content: rolePing || ' ', embeds:[embed] });
+    await eventMessage.edit({ content: rolePing || ' ', embeds: [embed] });
 }
 
 // --- Ready ---
-client.once(Events.ClientReady, async ()=>{
+client.once(Events.ClientReady, async () => {
     await initMongo();
     console.log(`Logged in as ${client.user.tag}`);
-    client.user.setPresence({ activities:[{name:'-community, -plus...', type:ActivityType.Watching}], status:'online' });
+    client.user.setPresence({ 
+        activities: [{ name: 'Hosting Events', type: ActivityType.Watching }], 
+        status: 'online' 
+    });
 });
 
-// --- Команды ---
-client.on(Events.MessageCreate, async message=>{
-    if(message.author.bot || !message.guild) return;
-    const prefix='-';
-    if(!message.content.startsWith(prefix)) return;
+// --- Обработка команд ---
+client.on(Events.MessageCreate, async message => {
+    if (message.author.bot || !message.guild) return;
+    const prefix = '-';
+    if (!message.content.startsWith(prefix)) return;
 
-    const args=message.content.slice(prefix.length).trim().split(/ +/);
-    const command=args.shift().toLowerCase();
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
 
-    // --- Хостинг ---
-    if(EVENT_TYPES[command]){
-        const type=command, info=EVENT_TYPES[type];
-        const robux=args[0] && !isNaN(parseInt(args[0]))?parseInt(args[0]):info.min;
-        const member=message.member;
+    // 1. Команды хостинга (community, plus, etc)
+    if (EVENT_TYPES[command]) {
+        const type = command, info = EVENT_TYPES[type];
+        const robux = args[0] && !isNaN(parseInt(args[0])) ? parseInt(args[0]) : info.min;
+        const member = message.member;
 
-        if(message.channel.id!==info.channelId) return message.reply({ content:`❌ Only in <#${info.channelId}>!`, ephemeral:true });
-        if(!member.roles.cache.has(EVENT_ROLES[type])) return message.reply({ content:`❌ Need role ${info.name}!`, ephemeral:true });
-        if(robux<info.min || robux>info.max) return message.reply({ content:`❌ Invalid amount ${robux} R$!`, ephemeral:true });
+        if (message.channel.id !== info.channelId) return message.reply(`❌ Only in <#${info.channelId}>!`);
+        if (!member.roles.cache.has(EVENT_ROLES[type])) return message.reply(`❌ You need the ${info.name} role!`);
+        if (robux < info.min || robux > info.max) return message.reply(`❌ Amount must be between ${info.min} and ${info.max} R$!`);
 
-        const stats=await getHostStats(message.author.id);
-        stats.eventsHosted++; stats.totalRobux+=robux; stats.byType[type]++;
-        await updateHostStats(stats);
+        // Обновляем статистику хоста
+        const stats = await getHostStats(message.author.id);
+        stats.eventsHosted++;
+        stats.totalRobux += robux;
+        stats.byType[type]++;
+        await hostStatsCol.updateOne({ _id: stats._id }, { $set: stats });
 
-        const embed=new EmbedBuilder()
+        const embed = new EmbedBuilder()
             .setColor(0x00AE86)
             .setTitle(`🎮 ${info.name} Event`)
             .setDescription(`${message.author} is starting a ${info.name} Event! (${robux} R$)`)
             .addFields(
-                {name:'👍 Positive', value:'0', inline:true},
-                {name:'👎 Negative', value:'0', inline:true},
-                {name:'⭐ Score', value:'No ratings yet', inline:true}
+                { name: '👍 Positive', value: '0', inline: true },
+                { name: '👎 Negative', value: '0', inline: true },
+                { name: '⭐ Score', value: 'No ratings yet', inline: true }
             )
-            .setFooter({text:'React to rate this event'}).setTimestamp();
+            .setFooter({ text: 'Use buttons below to rate' })
+            .setTimestamp();
 
-        const rolePing = PING_ROLES[type]?`<@&${PING_ROLES[type]}>`:'';
-        const eventMessage=await message.channel.send({ content:rolePing || ' ', embeds:[embed] });
+        const rolePing = PING_ROLES[type] ? `<@&${PING_ROLES[type]}>` : '';
+        const eventMsg = await message.channel.send({ content: rolePing, embeds: [embed] });
 
-        const buttons=new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`like_${eventMessage.id}`).setLabel('👍 0').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`dislike_${eventMessage.id}`).setLabel('👎 0').setStyle(ButtonStyle.Danger)
+        const buttons = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`like_${eventMsg.id}`).setLabel('👍 0').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`dislike_${eventMsg.id}`).setLabel('👎 0').setStyle(ButtonStyle.Danger)
         );
-        await eventMessage.edit({ components:[buttons] });
 
-        await updateEventRating({ _id: eventMessage.id, host: message.author.id, type:type, robux:robux, likes:0, dislikes:0, votes:{} });
-        return;
+        await eventMsg.edit({ components: [buttons] });
+
+        // Сохраняем данные о событии
+        await eventRatingsCol.insertOne({
+            _id: eventMsg.id,
+            host: message.author.id,
+            type: type,
+            robux: robux,
+            likes: 0,
+            dislikes: 0,
+            votes: {} // Формат: { "userId": "like" | "dislike" }
+        });
+        
+        await message.delete().catch(() => {}); // Удаляем команду вызова
     }
 
-    // --- STATUS, Admin, TOPRATING, HELP команды --- 
-    // Можно переписать точно как в предыдущем коде, заменив JSON на Mongo
-    // Для экономии места я оставлю заготовку — могу полностью переписать по MongoDB отдельно
+    // 2. Команда статистики (например, -stats)
+    if (command === 'stats') {
+        const target = message.mentions.users.first() || message.author;
+        const stats = await getHostStats(target.id);
+        
+        const embed = new EmbedBuilder()
+            .setTitle(`📊 Stats for ${target.username}`)
+            .setColor(0x3498DB)
+            .addFields(
+                { name: 'Total Events', value: `${stats.eventsHosted}`, inline: true },
+                { name: 'Total Robux', value: `${stats.totalRobux} R$`, inline: true }
+            );
+        
+        message.reply({ embeds: [embed] });
+    }
 });
 
-// --- Кнопки ---
-client.on(Events.InteractionCreate, async interaction=>{
-    if(!interaction.isButton()) return;
-    const messageId=interaction.message.id;
-    const rating=await getEventRating(messageId);
-    if(!rating) return interaction.reply({ content:'Event not found', ephemeral:true });
+// --- Кнопки (Голосование) ---
+client.on(Events.InteractionCreate, async interaction => {
+    if (!interaction.isButton()) return;
 
-    const voteType=interaction.customId.startsWith('like')?'like':'dislike';
-    const prevVote=rating.votes[interaction.user.id];
+    const [action, messageId] = interaction.customId.split('_');
+    const rating = await eventRatingsCol.findOne({ _id: messageId });
 
-    if(prevVote==='like') rating.likes--;
-    if(prevVote==='dislike') rating.dislikes--;
+    if (!rating) return interaction.reply({ content: '❌ Event data not found.', ephemeral: true });
 
-    rating.votes[interaction.user.id]=voteType;
-    if(voteType==='like') rating.likes++; else rating.dislikes++;
+    const userId = interaction.user.id;
+    const prevVote = rating.votes[userId];
+    const currentVote = action; // 'like' или 'dislike'
 
-    const row=new ActionRowBuilder().addComponents(
+    // Если нажал на ту же кнопку — убираем голос
+    if (prevVote === currentVote) {
+        delete rating.votes[userId];
+        action === 'like' ? rating.likes-- : rating.dislikes--;
+    } else {
+        // Если меняет голос (с лайка на дизлайк и наоборот)
+        if (prevVote === 'like') rating.likes--;
+        if (prevVote === 'dislike') rating.dislikes--;
+
+        rating.votes[userId] = currentVote;
+        currentVote === 'like' ? rating.likes++ : rating.dislikes++;
+    }
+
+    // Сохраняем в БД
+    await eventRatingsCol.updateOne({ _id: messageId }, { $set: rating });
+
+    // Обновляем кнопки
+    const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`like_${messageId}`).setLabel(`👍 ${rating.likes}`).setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId(`dislike_${messageId}`).setLabel(`👎 ${rating.dislikes}`).setStyle(ButtonStyle.Danger)
     );
 
-    await interaction.message.edit({ components:[row] });
+    await interaction.message.edit({ components: [row] });
     await updateRatingEmbed(interaction.message, rating);
-    await updateEventRating(rating);
 
-    await interaction.reply({ content:'✅ Vote counted!', ephemeral:true });
+    await interaction.reply({ content: '✅ Vote updated!', ephemeral: true });
 });
 
 client.login(process.env.DISCORD_TOKEN);
