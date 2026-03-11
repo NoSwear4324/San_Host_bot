@@ -9,18 +9,47 @@ const {
     ButtonBuilder, 
     ButtonStyle 
 } = require('discord.js');
-const { MongoClient } = require('mongodb');
+const mongoose = require('mongoose');
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMessageReactions
-    ]
+// === ПОДКЛЮЧЕНИЕ ===
+mongoose.connect(process.env.MONGO_URL)
+    .then(() => console.log('✅ MongoDB connected'))
+    .catch(err => { console.error('❌ MongoDB error:', err); process.exit(1); });
+
+// === СХЕМЫ ===
+const hostStatsSchema = new mongoose.Schema({
+    userId: { type: String, required: true, unique: true },
+    eventsHosted: { type: Number, default: 0 },
+    totalRobux: { type: Number, default: 0 },
+    byType: {
+        community: { type: Number, default: 0 },
+        plus: { type: Number, default: 0 },
+        super: { type: Number, default: 0 },
+        ultra: { type: Number, default: 0 },
+        ultimate: { type: Number, default: 0 },
+        extreme: { type: Number, default: 0 },
+        godly: { type: Number, default: 0 }
+    }
 });
 
-// --- Настройки ---
+const eventRatingSchema = new mongoose.Schema({
+    messageId: { type: String, required: true, unique: true },
+    host: String,
+    type: String,
+    robux: Number,
+    likes: { type: Number, default: 0 },
+    dislikes: { type: Number, default: 0 },
+    votes: { type: Map, of: String, default: {} } // Храним userId: "like" или "dislike"
+});
+
+const HostStats = mongoose.model('HostStats', hostStatsSchema);
+const EventRating = mongoose.model('EventRating', eventRatingSchema);
+
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+});
+
+// === НАСТРОЙКИ (ID те же) ===
 const EVENT_TYPES = {
     community: { name: 'Community', min: 5, max: 25, channelId: '1475487079164149913' },
     plus: { name: 'Plus', min: 25, max: 99, channelId: '1475486974252023872' },
@@ -32,214 +61,113 @@ const EVENT_TYPES = {
 };
 
 const EVENT_ROLES = {
-    community: '1480488494240366775',
-    plus: '1480488553397096508',
-    super: '1480488633055313981',
-    ultra: '1480488736302174260',
-    ultimate: '1480488801515344105',
-    extreme: '1480488892078489680',
-    godly: '1480488963914465340'
+    community: '1480488494240366775', plus: '1480488553397096508', super: '1480488633055313981',
+    ultra: '1480488736302174260', ultimate: '1480488801515344105', extreme: '1480488892078489680', godly: '1480488963914465340'
 };
 
 const PING_ROLES = {
-    community: '1480533620535066635',
-    plus: '1480533677095260291',
-    super: '1480533717071171615',
-    ultra: '1480533781612855437',
-    ultimate: '1480533827108602089',
-    extreme: '1480533870909587508',
-    godly: '1480533912127017043'
+    community: '1480533620535066635', plus: '1480533677095260291', super: '1480533717071171615',
+    ultra: '1480533781612855437', ultimate: '1480533827108602089', extreme: '1480533870909587508', godly: '1480533912127017043'
 };
 
-// --- MongoDB ---
-const mongo = new MongoClient(process.env.MONGO_URI);
-let db, hostStatsCol, eventRatingsCol;
-
-async function initMongo() {
-    try {
-        await mongo.connect();
-        db = mongo.db(process.env.DB_NAME || 'bot_database');
-        hostStatsCol = db.collection('hostStats');
-        eventRatingsCol = db.collection('eventRatings');
-        console.log('✅ Connected to MongoDB');
-    } catch (err) {
-        console.error('❌ MongoDB Connection Error:', err);
-        process.exit(1); // Останавливаем процесс, если БД недоступна
-    }
-}
-
-// --- Утилиты ---
-async function getHostStats(userId) {
-    let stats = await hostStatsCol.findOne({ _id: userId });
-    if (!stats) {
-        stats = { 
-            _id: userId, 
-            eventsHosted: 0, 
-            totalRobux: 0, 
-            byType: { community:0, plus:0, super:0, ultra:0, ultimate:0, extreme:0, godly:0 } 
-        };
-        await hostStatsCol.insertOne(stats);
-    }
-    return stats;
-}
-
-async function updateRatingEmbed(eventMessage, rating) {
-    const totalRatings = rating.likes + rating.dislikes;
-    const percent = totalRatings > 0 ? Math.round((rating.likes / totalRatings) * 100) : 0;
-
-    let ratingText = 'No ratings yet', color = 0x00AE86;
-    if (totalRatings > 0) {
-        if (percent >= 90) { ratingText = '🏆 Diamond'; color = 0xB9F2FF; }
-        else if (percent >= 80) { ratingText = '🥇 Gold'; color = 0xFFD700; }
-        else if (percent >= 70) { ratingText = '🥈 Silver'; color = 0xC0C0C0; }
-        else if (percent >= 60) { ratingText = '🥉 Bronze'; color = 0xCD7F32; }
-        else { ratingText = '⚠️ Low'; color = 0xFF4500; }
-    }
-
+// === УТИЛИТЫ ===
+async function updateRatingEmbed(message, rating) {
+    const total = rating.likes + rating.dislikes;
+    const percent = total > 0 ? Math.round((rating.likes / total) * 100) : 0;
+    
     const embed = new EmbedBuilder()
-        .setColor(color)
+        .setColor(percent >= 70 ? 0x00AE86 : 0xFF4500)
         .setTitle(`🎮 ${EVENT_TYPES[rating.type].name} Event`)
-        .setDescription(`<@${rating.host}> is hosting a ${EVENT_TYPES[rating.type].name} Event! (${rating.robux} R$)`)
+        .setDescription(`<@${rating.host}> is hosting! (${rating.robux} R$)`)
         .addFields(
             { name: '👍 Positive', value: `${rating.likes}`, inline: true },
             { name: '👎 Negative', value: `${rating.dislikes}`, inline: true },
-            { name: '⭐ Score', value: totalRatings === 0 ? 'No ratings yet' : `${percent}% (${ratingText})`, inline: true }
+            { name: '⭐ Score', value: total === 0 ? 'No ratings' : `${percent}%`, inline: true }
         )
-        .setFooter({ text: 'Use buttons below to rate' })
         .setTimestamp();
 
-    const rolePing = PING_ROLES[rating.type] ? `<@&${PING_ROLES[rating.type]}>` : '';
-    await eventMessage.edit({ content: rolePing || ' ', embeds: [embed] });
+    const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`vote_like_${rating.messageId}`).setLabel(`👍 ${rating.likes}`).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`vote_dislike_${rating.messageId}`).setLabel(`👎 ${rating.dislikes}`).setStyle(ButtonStyle.Danger)
+    );
+
+    await message.edit({ embeds: [embed], components: [buttons] }).catch(() => {});
 }
 
-// --- Ready ---
-client.once(Events.ClientReady, async () => {
-    await initMongo();
-    console.log(`Logged in as ${client.user.tag}`);
-    client.user.setPresence({ 
-        activities: [{ name: 'Hosting Events', type: ActivityType.Watching }], 
-        status: 'online' 
-    });
-});
+client.once(Events.ClientReady, () => console.log(`🚀 ${client.user.tag} Online`));
 
-// --- Обработка команд ---
+// === КОМАНДЫ ===
 client.on(Events.MessageCreate, async message => {
-    if (message.author.bot || !message.guild) return;
-    const prefix = '-';
-    if (!message.content.startsWith(prefix)) return;
+    if (message.author.bot || !message.content.startsWith('-')) return;
 
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const args = message.content.slice(1).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // 1. Команды хостинга (community, plus, etc)
     if (EVENT_TYPES[command]) {
-        const type = command, info = EVENT_TYPES[type];
-        const robux = args[0] && !isNaN(parseInt(args[0])) ? parseInt(args[0]) : info.min;
-        const member = message.member;
+        const type = command;
+        const info = EVENT_TYPES[type];
+        const robux = parseInt(args[0]) || info.min;
 
         if (message.channel.id !== info.channelId) return message.reply(`❌ Only in <#${info.channelId}>!`);
-        if (!member.roles.cache.has(EVENT_ROLES[type])) return message.reply(`❌ You need the ${info.name} role!`);
-        if (robux < info.min || robux > info.max) return message.reply(`❌ Amount must be between ${info.min} and ${info.max} R$!`);
+        if (!message.member.roles.cache.has(EVENT_ROLES[type])) return message.reply(`❌ Missing role!`);
 
-        // Обновляем статистику хоста
-        const stats = await getHostStats(message.author.id);
-        stats.eventsHosted++;
-        stats.totalRobux += robux;
-        stats.byType[type]++;
-        await hostStatsCol.updateOne({ _id: stats._id }, { $set: stats });
+        await HostStats.findOneAndUpdate({ userId: message.author.id }, { $inc: { eventsHosted: 1, totalRobux: robux, [`byType.${type}`]: 1 } }, { upsert: true });
 
         const embed = new EmbedBuilder()
             .setColor(0x00AE86)
             .setTitle(`🎮 ${info.name} Event`)
             .setDescription(`${message.author} is starting a ${info.name} Event! (${robux} R$)`)
-            .addFields(
-                { name: '👍 Positive', value: '0', inline: true },
-                { name: '👎 Negative', value: '0', inline: true },
-                { name: '⭐ Score', value: 'No ratings yet', inline: true }
-            )
-            .setFooter({ text: 'Use buttons below to rate' })
-            .setTimestamp();
-
-        const rolePing = PING_ROLES[type] ? `<@&${PING_ROLES[type]}>` : '';
-        const eventMsg = await message.channel.send({ content: rolePing, embeds: [embed] });
+            .addFields({ name: '👍 Positive', value: '0', inline: true }, { name: '👎 Negative', value: '0', inline: true }, { name: '⭐ Score', value: 'No ratings', inline: true });
 
         const buttons = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`like_${eventMsg.id}`).setLabel('👍 0').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`dislike_${eventMsg.id}`).setLabel('👎 0').setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId(`vote_like_temp`).setLabel('👍 0').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`vote_dislike_temp`).setLabel('👎 0').setStyle(ButtonStyle.Danger)
         );
 
-        await eventMsg.edit({ components: [buttons] });
+        const ping = PING_ROLES[type] ? `<@&${PING_ROLES[type]}>` : '';
+        const eventMsg = await message.channel.send({ content: ping, embeds: [embed], components: [buttons] });
 
-        // Сохраняем данные о событии
-        await eventRatingsCol.insertOne({
-            _id: eventMsg.id,
-            host: message.author.id,
-            type: type,
-            robux: robux,
-            likes: 0,
-            dislikes: 0,
-            votes: {} // Формат: { "userId": "like" | "dislike" }
-        });
-        
-        await message.delete().catch(() => {}); // Удаляем команду вызова
-    }
+        // Обновляем кнопки с реальным ID сообщения
+        const realButtons = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`vote_like_${eventMsg.id}`).setLabel('👍 0').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`vote_dislike_${eventMsg.id}`).setLabel('👎 0').setStyle(ButtonStyle.Danger)
+        );
+        await eventMsg.edit({ components: [realButtons] });
 
-    // 2. Команда статистики (например, -stats)
-    if (command === 'stats') {
-        const target = message.mentions.users.first() || message.author;
-        const stats = await getHostStats(target.id);
-        
-        const embed = new EmbedBuilder()
-            .setTitle(`📊 Stats for ${target.username}`)
-            .setColor(0x3498DB)
-            .addFields(
-                { name: 'Total Events', value: `${stats.eventsHosted}`, inline: true },
-                { name: 'Total Robux', value: `${stats.totalRobux} R$`, inline: true }
-            );
-        
-        message.reply({ embeds: [embed] });
+        await EventRating.create({ messageId: eventMsg.id, host: message.author.id, type: type, robux: robux });
+        await message.delete().catch(() => {});
     }
 });
 
-// --- Кнопки (Голосование) ---
+// === ОБРАБОТКА КНОПОК ===
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
 
-    const [action, messageId] = interaction.customId.split('_');
-    const rating = await eventRatingsCol.findOne({ _id: messageId });
+    const [prefix, action, msgId] = interaction.customId.split('_');
+    if (prefix !== 'vote') return;
 
-    if (!rating) return interaction.reply({ content: '❌ Event data not found.', ephemeral: true });
+    const rating = await EventRating.findOne({ messageId: msgId });
+    if (!rating) return interaction.reply({ content: '❌ Event not found', ephemeral: true });
 
     const userId = interaction.user.id;
-    const prevVote = rating.votes[userId];
-    const currentVote = action; // 'like' или 'dislike'
+    const oldVote = rating.votes.get(userId);
 
-    // Если нажал на ту же кнопку — убираем голос
-    if (prevVote === currentVote) {
-        delete rating.votes[userId];
+    if (oldVote === action) {
+        // Убираем голос если нажал второй раз
+        rating.votes.delete(userId);
         action === 'like' ? rating.likes-- : rating.dislikes--;
     } else {
-        // Если меняет голос (с лайка на дизлайк и наоборот)
-        if (prevVote === 'like') rating.likes--;
-        if (prevVote === 'dislike') rating.dislikes--;
+        // Меняем или добавляем голос
+        if (oldVote === 'like') rating.likes--;
+        if (oldVote === 'dislike') rating.dislikes--;
 
-        rating.votes[userId] = currentVote;
-        currentVote === 'like' ? rating.likes++ : rating.dislikes++;
+        rating.votes.set(userId, action);
+        action === 'like' ? rating.likes++ : rating.dislikes++;
     }
 
-    // Сохраняем в БД
-    await eventRatingsCol.updateOne({ _id: messageId }, { $set: rating });
-
-    // Обновляем кнопки
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`like_${messageId}`).setLabel(`👍 ${rating.likes}`).setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`dislike_${messageId}`).setLabel(`👎 ${rating.dislikes}`).setStyle(ButtonStyle.Danger)
-    );
-
-    await interaction.message.edit({ components: [row] });
+    await rating.save();
     await updateRatingEmbed(interaction.message, rating);
-
-    await interaction.reply({ content: '✅ Vote updated!', ephemeral: true });
+    await interaction.deferUpdate(); // Чтобы Discord не выдавал ошибку "interaction failed"
 });
 
 client.login(process.env.DISCORD_TOKEN);
