@@ -12,6 +12,7 @@ const client = new Client({
     ]
 });
 
+
 // --- Настройки ---
 const EVENT_TYPES = {
     community: { name: 'Community', min: 5, max: 25, channelId: '1475487079164149913' },
@@ -51,6 +52,17 @@ const RATINGS_FILE = path.join(__dirname, 'eventRatings.json');
 
 let hostStats = new Map();
 let eventRatings = new Map();
+
+// --- MongoDB ---
+const mongo = new MongoClient(process.env.MONGO_URI);
+let db, hostStatsCol, eventRatingsCol;
+
+async function initMongo() {
+    await mongo.connect();
+    db = mongo.db(process.env.DB_NAME);
+    hostStatsCol = db.collection('hostStats');
+    eventRatingsCol = db.collection('eventRatings');
+}
 
 // --- Утилиты ---
 function createEmptyStats() {
