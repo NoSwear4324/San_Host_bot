@@ -1,31 +1,8 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, Events } = require('discord.js');
-const mongoose = require('mongoose');
+const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, Events, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 
-// === ПОДКЛЮЧЕНИЕ К MONGODB ===
-mongoose.connect(process.env.MONGO_URL)
-    .then(() => console.log('✅ MongoDB connected'))
-    .catch(err => console.error('❌ MongoDB error:', err));
-
-// === СХЕМА СТАТИСТИКИ ===
-const hostStatsSchema = new mongoose.Schema({
-    userId: { type: String, required: true, unique: true },
-    eventsHosted: { type: Number, default: 0 },
-    totalRobux: { type: Number, default: 0 },
-    byType: {
-        community: { type: Number, default: 0 },
-        plus: { type: Number, default: 0 },
-        super: { type: Number, default: 0 },
-        ultra: { type: Number, default: 0 },
-        ultimate: { type: Number, default: 0 },
-        extreme: { type: Number, default: 0 },
-        godly: { type: Number, default: 0 }
-    }
-});
-
-const HostStats = mongoose.model('HostStats', hostStatsSchema);
-
-// === КЛИЕНТ DISCORD ===
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -35,7 +12,7 @@ const client = new Client({
     ]
 });
 
-// === КОНФИГУРАЦИЯ ===
+// --- Настройки ---
 const EVENT_TYPES = {
     community: { name: 'Community', min: 5, max: 25, channelId: '1475487079164149913' },
     plus: { name: 'Plus', min: 25, max: 99, channelId: '1475486974252023872' },
@@ -66,422 +43,255 @@ const PING_ROLES = {
     godly: '1480533912127017043'
 };
 
-const ADMIN_ROLES = ['1480488494240366775'];
-const eventRatings = new Map();
+const ADMIN_ROLES = ['1475552294203424880', '1475552827626619050'];
 
-// === ФУНКЦИИ БД ===
+// --- Файлы ---
+const STATS_FILE = path.join(__dirname, 'hostStats.json');
+const RATINGS_FILE = path.join(__dirname, 'eventRatings.json');
 
-async function getStats(userId) {
-    let stats = await HostStats.findOne({ userId });
-    if (!stats) {
-        stats = await HostStats.create({
-            userId,
-            eventsHosted: 0,
-            totalRobux: 0,
-            byType: { community: 0, plus: 0, super: 0, ultra: 0, ultimate: 0, extreme: 0, godly: 0 }
-        });
-    }
-    return stats;
+let hostStats = new Map();
+let eventRatings = new Map();
+
+// --- Утилиты ---
+function createEmptyStats() {
+    return { eventsHosted: 0, totalRobux: 0, byType: { community:0, plus:0, super:0, ultra:0, ultimate:0, extreme:0, godly:0 } };
 }
 
-async function updateStats(userId, updates) {
-    await HostStats.findOneAndUpdate({ userId }, updates, { upsert: true, new: true });
-}
+function loadStats() { if (fs.existsSync(STATS_FILE)) hostStats = new Map(Object.entries(JSON.parse(fs.readFileSync(STATS_FILE, 'utf8')))); }
+function saveStats() { fs.writeFileSync(STATS_FILE, JSON.stringify(Object.fromEntries(hostStats), null, 2)); }
+function loadRatings() { if (fs.existsSync(RATINGS_FILE)) { const data = JSON.parse(fs.readFileSync(RATINGS_FILE, 'utf8')); eventRatings.clear(); for(const [id,r] of Object.entries(data)) eventRatings.set(id,r); } }
+function saveRatings() { fs.writeFileSync(RATINGS_FILE, JSON.stringify(Object.fromEntries(eventRatings), null, 2)); }
 
 async function updateRatingEmbed(eventMessage, rating) {
     const totalRatings = rating.likes + rating.dislikes;
-    const percent = totalRatings > 0 ? Math.round((rating.likes / totalRatings) * 100) : 0;
-    
-    let ratingText = 'No ratings yet';
-    let color = 0x00AE86;
+    const percent = totalRatings>0 ? Math.round(rating.likes/totalRatings*100):0;
 
-    if (totalRatings > 0) {
-        if (percent >= 90) { ratingText = '🏆 Diamond'; color = 0xB9F2FF; }
-        else if (percent >= 80) { ratingText = '🥇 Gold'; color = 0xFFD700; }
-        else if (percent >= 70) { ratingText = '🥈 Silver'; color = 0xC0C0C0; }
-        else if (percent >= 60) { ratingText = '🥉 Bronze'; color = 0xCD7F32; }
-        else { ratingText = '⚠️ Low'; color = 0xFF4500; }
+    let ratingText='No ratings yet', color=0x00AE86;
+    if(totalRatings>0){
+        if(percent>=90){ratingText='🏆 Diamond';color=0xB9F2FF;}
+        else if(percent>=80){ratingText='🥇 Gold';color=0xFFD700;}
+        else if(percent>=70){ratingText='🥈 Silver';color=0xC0C0C0;}
+        else if(percent>=60){ratingText='🥉 Bronze';color=0xCD7F32;}
+        else {ratingText='⚠️ Low';color=0xFF4500;}
     }
 
-    const embed = new EmbedBuilder()
+    const embed=new EmbedBuilder()
         .setColor(color)
         .setTitle(`🎮 ${EVENT_TYPES[rating.type].name} Event`)
         .setDescription(`<@${rating.host}> is hosting a ${EVENT_TYPES[rating.type].name} Event! (${rating.robux} R$)`)
         .addFields(
-            { name: '👍 Positive', value: `${rating.likes}`, inline: true },
-            { name: '👎 Negative', value: `${rating.dislikes}`, inline: true },
-            { name: '⭐ Score', value: totalRatings === 0 ? 'No ratings yet' : `${percent}% (${ratingText})`, inline: true }
+            { name:'👍 Positive', value:`${rating.likes}`, inline:true },
+            { name:'👎 Negative', value:`${rating.dislikes}`, inline:true },
+            { name:'⭐ Score', value: totalRatings===0?'No ratings yet':`${percent}% (${ratingText})`, inline:true }
         )
-        .setFooter({ text: 'React to rate this event' })
+        .setFooter({ text:'React to rate this event' })
         .setTimestamp();
 
-    try {
-        const pingRoleId = PING_ROLES[rating.type];
-        const rolePing = pingRoleId && !pingRoleId.includes('your_') ? `<@&${pingRoleId}>` : '';
-        await eventMessage.edit({ content: rolePing || ' ', embeds: [embed] });
-    } catch (err) {
-        console.error('Error updating rating embed:', err);
-    }
+    const rolePing = PING_ROLES[rating.type] ? `<@&${PING_ROLES[rating.type]}>` : '';
+    await eventMessage.edit({ content: rolePing || ' ', embeds:[embed] });
 }
 
-// === СОБЫТИЯ ===
-
-client.once(Events.ClientReady, async () => {
-    console.log(`🤖 Bot logged in as ${client.user.tag}`);
-    const count = await HostStats.countDocuments();
-    console.log(`📊 Loaded ${count} users from database`);
-    client.user.setPresence({
-        activities: [{ name: '-community, -plus, -super...', type: ActivityType.Watching }],
-        status: 'online'
-    });
+// --- Ready ---
+client.once(Events.ClientReady, ()=>{
+    console.log(`Logged in as ${client.user.tag}`);
+    loadStats();
+    loadRatings();
+    client.user.setPresence({ activities:[{name:'-community, -plus...', type:ActivityType.Watching}], status:'online' });
 });
 
-client.on(Events.MessageCreate, async (message) => {
-    if (message.author.bot || !message.guild) return;
-    
-    const prefix = '-';
-    if (!message.content.startsWith(prefix)) return;
+// --- Команды ---
+client.on(Events.MessageCreate, async message=>{
+    if(message.author.bot || !message.guild) return;
+    const prefix='-';
+    if(!message.content.startsWith(prefix)) return;
 
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const command = args.shift().toLowerCase();
+    const args=message.content.slice(prefix.length).trim().split(/ +/);
+    const command=args.shift().toLowerCase();
 
-    // === СОЗДАНИЕ ИВЕНТА ===
-    if (EVENT_TYPES[command]) {
-        const eventType = command;
-        const eventInfo = EVENT_TYPES[eventType];
-        
-        let robux;
-        if (!args[0] || isNaN(parseInt(args[0]))) {
-            robux = eventInfo.min;
-        } else {
-            robux = parseInt(args[0]);
-        }
+    // --- Хостинг ---
+    if(EVENT_TYPES[command]){
+        const type=command, info=EVENT_TYPES[type];
+        const robux=args[0] && !isNaN(parseInt(args[0]))?parseInt(args[0]):info.min;
+        const member=message.member;
 
-        const allowedChannelId = eventInfo.channelId;
-        if (!allowedChannelId || allowedChannelId.includes('your_')) {
-            return message.reply({ content: `❌ Channel ID not configured!`, ephemeral: true });
-        }
+        if(message.channel.id!==info.channelId) return message.reply({ content:`❌ Only in <#${info.channelId}>!`, ephemeral:true });
+        if(!member.roles.cache.has(EVENT_ROLES[type])) return message.reply({ content:`❌ Need role ${info.name}!`, ephemeral:true });
+        if(robux<info.min || robux>info.max) return message.reply({ content:`❌ Invalid amount ${robux} R$!`, ephemeral:true });
 
-        if (message.channel.id !== allowedChannelId) {
-            return message.reply({ content: `❌ You can only host ${eventInfo.name} events in <#${allowedChannelId}>!`, ephemeral: true });
-        }
+        if(!hostStats.has(message.author.id)) hostStats.set(message.author.id, createEmptyStats());
+        const stats=hostStats.get(message.author.id);
+        stats.eventsHosted++; stats.totalRobux+=robux; stats.byType[type]++; saveStats();
 
-        const member = message.member;
-        if (!member) return;
-
-        const roleId = EVENT_ROLES[eventType];
-        if (!roleId || roleId.includes('your_')) {
-            return message.reply({ content: `❌ Role ID not configured!`, ephemeral: true });
-        }
-
-        if (!member.roles.cache.has(roleId)) {
-            return message.reply({ content: `❌ You need the ${eventInfo.name} role!`, ephemeral: true });
-        }
-
-        if (!robux || robux < eventInfo.min || robux > eventInfo.max) {
-            return message.reply({ 
-                content: `❌ Invalid Robux! ${eventInfo.min}-${eventInfo.max} R$`, 
-                ephemeral: true 
-            });
-        }
-
-        // ✅ ОБНОВЛЕНИЕ СТАТИСТИКИ В БД
-        await updateStats(message.author.id, {
-            $inc: {
-                eventsHosted: 1,
-                totalRobux: robux,
-                [`byType.${eventType}`]: 1
-            }
-        });
-
-        const pingRoleId = PING_ROLES[eventType];
-        const rolePing = pingRoleId && !pingRoleId.includes('your_') ? `<@&${pingRoleId}>` : '';
-
-        const embed = new EmbedBuilder()
+        const embed=new EmbedBuilder()
             .setColor(0x00AE86)
-            .setTitle(`🎮 ${eventInfo.name} Event`)
-            .setDescription(`${message.author} is starting a ${eventInfo.name} Event! (${robux} R$)`)
+            .setTitle(`🎮 ${info.name} Event`)
+            .setDescription(`${message.author} is starting a ${info.name} Event! (${robux} R$)`)
             .addFields(
-                { name: '👍 Positive', value: '0', inline: true },
-                { name: '👎 Negative', value: '0', inline: true },
-                { name: '⭐ Score', value: 'No ratings yet', inline: true }
+                {name:'👍 Positive', value:'0', inline:true},
+                {name:'👎 Negative', value:'0', inline:true},
+                {name:'⭐ Score', value:'No ratings yet', inline:true}
             )
-            .setFooter({ text: 'React to rate this event' })
-            .setTimestamp();
+            .setFooter({text:'React to rate this event'}).setTimestamp();
 
-        const eventMessage = await message.channel.send({ content: rolePing || ' ', embeds: [embed] });
-        
-        eventRatings.set(eventMessage.id, {
-            host: message.author.id,
-            type: eventType,
-            robux: robux,
-            likes: 0,
-            dislikes: 0,
-            rated: []
-        });
-        
-        await eventMessage.react('👍');
-        await eventMessage.react('👎');
+        const rolePing = PING_ROLES[type]?`<@&${PING_ROLES[type]}>`:'';
+        const eventMessage=await message.channel.send({ content:rolePing || ' ', embeds:[embed] });
+
+        const buttons=new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`like_${eventMessage.id}`).setLabel('👍 0').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`dislike_${eventMessage.id}`).setLabel('👎 0').setStyle(ButtonStyle.Danger)
+        );
+        await eventMessage.edit({ components:[buttons] });
+
+        eventRatings.set(eventMessage.id,{ host:message.author.id, type:type, robux:robux, likes:0, dislikes:0, votes:{} });
+        saveRatings();
         return;
     }
 
-    // === КОМАНДА: -status ===
-    if (command === 'status') {
-        const user = message.mentions.users.first() || message.author;
-        const member = message.member;
-        if (!member) return;
+    // --- Статус ---
+    if(command==='status'){
+        const user=message.mentions.users.first()||message.author;
+        const member=message.member;
+        if(!member) return;
 
-        const hostRoleIds = Object.values(EVENT_ROLES);
-        const hasAnyHostRole = member.roles.cache.some(role => hostRoleIds.includes(role.id));
+        const hostRoleIds=Object.values(EVENT_ROLES);
+        const hasRole=member.roles.cache.some(r=>hostRoleIds.includes(r.id));
+        if(!hasRole) return message.reply({ content:'❌ Need host role!', ephemeral:true });
 
-        if (!hasAnyHostRole) {
-            return message.reply({ content: '❌ You need a host role!', ephemeral: true });
+        const stats=hostStats.get(user.id)||createEmptyStats();
+        let typeStats=''; for(const [t,c] of Object.entries(stats.byType)) if(c>0) typeStats+=`${EVENT_TYPES[t].name}: ${c} events\n`;
+        if(!typeStats) typeStats='No events hosted\n';
+
+        let totalLikes=0,totalDislikes=0;
+        eventRatings.forEach(r=>{ if(r.host===user.id){totalLikes+=r.likes; totalDislikes+=r.dislikes;} });
+        const total=totalLikes+totalDislikes;
+        const percent=total>0?Math.round(totalLikes/total*100):0;
+
+        let ratingLevel='⭐ No ratings yet';
+        if(total>0){
+            if(percent>=90) ratingLevel='🏆 Diamond Host';
+            else if(percent>=80) ratingLevel='🥇 Gold Host';
+            else if(percent>=70) ratingLevel='🥈 Silver Host';
+            else if(percent>=60) ratingLevel='🥉 Bronze Host';
+            else ratingLevel='⚠️ Low Rated Host';
         }
 
-        const stats = await getStats(user.id);
-
-        let typeStats = '';
-        for (const [type, count] of Object.entries(stats.byType)) {
-            if (count > 0) {
-                typeStats += `${EVENT_TYPES[type].name}: ${count} events\n`;
-            }
-        }
-        if (!typeStats) typeStats = 'No events hosted yet\n';
-
-        let totalLikes = 0;
-        let totalDislikes = 0;
-        eventRatings.forEach((rating) => {
-            if (rating.host === user.id) {
-                totalLikes += rating.likes;
-                totalDislikes += rating.dislikes;
-            }
-        });
-        
-        const totalRatings = totalLikes + totalDislikes;
-        const ratingPercent = totalRatings > 0 ? Math.round((totalLikes / totalRatings) * 100) : 0;
-        
-        let ratingLevel = '⭐ No ratings yet';
-        if (totalRatings > 0) {
-            if (ratingPercent >= 90) ratingLevel = '🏆 Diamond Host';
-            else if (ratingPercent >= 80) ratingLevel = '🥇 Gold Host';
-            else if (ratingPercent >= 70) ratingLevel = '🥈 Silver Host';
-            else if (ratingPercent >= 60) ratingLevel = '🥉 Bronze Host';
-            else ratingLevel = '⚠️ Low Rated Host';
-        }
-
-        const embed = new EmbedBuilder()
+        const embed=new EmbedBuilder()
             .setColor(0x0099FF)
             .setTitle('📊 Host Status')
             .setDescription(`**User:** ${user.tag}`)
             .addFields(
-                { name: '🎯 Total Events', value: `${stats.eventsHosted}`, inline: true },
-                { name: '💰 Total Robux', value: `${stats.totalRobux} R$`, inline: true },
-                { name: '**Events by Type:**', value: typeStats, inline: false },
-                { name: '⭐ Rating', value: `${ratingLevel}\n👍 ${totalLikes} | 👎 ${totalDislikes} (${ratingPercent}% positive)`, inline: false }
-            )
-            .setTimestamp();
-
-        await message.reply({ embeds: [embed] });
-        return;
+                {name:'🎯 Total Events', value:`${stats.eventsHosted}`, inline:true},
+                {name:'💰 Total Robux', value:`${stats.totalRobux} R$`, inline:true},
+                {name:'**Events by Type:**', value:typeStats, inline:false},
+                {name:'⭐ Rating', value:`${ratingLevel}\n👍 ${totalLikes} | 👎 ${totalDislikes} (${percent}% positive)`, inline:false}
+            ).setTimestamp();
+        return message.reply({ embeds:[embed] });
     }
 
-    // === КОМАНДА: -setstats (Admin) ===
-    if (command === 'setstats') {
-        const member = message.member;
-        if (!member) return;
+    // --- Admin команды (-setstats, -seteventstats) ---
+    if(command==='setstats' || command==='seteventstats'){
+        const member=message.member;
+        if(!member) return;
+        const hasAdmin=member.roles.cache.some(r=>ADMIN_ROLES.includes(r.id));
+        if(!hasAdmin) return message.reply({ content:'❌ No permission!', ephemeral:true });
 
-        const hasAdminRole = member.roles.cache.some(role => ADMIN_ROLES.includes(role.id));
-        if (!hasAdminRole) {
-            return message.reply({ content: '❌ No permission!', ephemeral: true });
-        }
+        const user=message.mentions.users.first();
+        if(!user) return message.reply({ content:'❌ Mention a user!', ephemeral:true });
 
-        const user = message.mentions.users.first();
-        const robuxInput = args[1];
-
-        if (!user || !robuxInput) {
-            return message.reply({ content: '❌ Usage: `-setstats @user <robux>`', ephemeral: true });
-        }
-
-        const stats = await getStats(user.id);
-        const currentRobux = stats.totalRobux;
-        let newRobux, messageText;
-        
-        if (robuxInput.startsWith('-')) {
-            const subtract = parseInt(robuxInput);
-            newRobux = Math.max(0, currentRobux + subtract);
-            messageText = `✅ Removed **${Math.abs(subtract)} R$**!`;
+        if(command==='setstats'){
+            let robux=args[1];
+            if(!robux) return message.reply({ content:'❌ Usage: -setstats @user <robux>', ephemeral:true });
+            if(!hostStats.has(user.id)) hostStats.set(user.id, createEmptyStats());
+            const stats=hostStats.get(user.id);
+            if(robux.startsWith('-')) stats.totalRobux=Math.max(0,stats.totalRobux+parseInt(robux));
+            else stats.totalRobux=parseInt(robux);
+            saveStats();
+            return message.reply({ content:`✅ Stats updated!`, ephemeral:true });
         } else {
-            newRobux = parseInt(robuxInput);
-            messageText = `✅ Set Robux to **${newRobux} R$**!`;
+            let type=args[1]?.toLowerCase();
+            let count=args[2];
+            if(!type || !EVENT_TYPES[type] || !count) return message.reply({ content:'❌ Usage: -seteventstats @user <type> <count>', ephemeral:true });
+            if(!hostStats.has(user.id)) hostStats.set(user.id, createEmptyStats());
+            const stats=hostStats.get(user.id);
+            if(count.startsWith('-')) stats.byType[type]=Math.max(0,stats.byType[type]+parseInt(count));
+            else stats.byType[type]=parseInt(count);
+            stats.eventsHosted=Object.values(stats.byType).reduce((a,b)=>a+b,0);
+            saveStats();
+            return message.reply({ content:`✅ Event stats updated!`, ephemeral:true });
         }
-
-        await updateStats(user.id, { totalRobux: newRobux });
-
-        await message.reply({ content: messageText, ephemeral: true });
-        return;
     }
 
-    // === КОМАНДА: -seteventstats (Admin) ===
-    if (command === 'seteventstats') {
-        const member = message.member;
-        if (!member) return;
-
-        const hasAdminRole = member.roles.cache.some(role => ADMIN_ROLES.includes(role.id));
-        if (!hasAdminRole) {
-            return message.reply({ content: '❌ No permission!', ephemeral: true });
-        }
-
-        const user = message.mentions.users.first();
-        const eventType = args[1]?.toLowerCase();
-        const countInput = args[2];
-
-        if (!user || !eventType || !EVENT_TYPES[eventType] || !countInput) {
-            return message.reply({ content: '❌ Usage: `-seteventstats @user <type> <count>`', ephemeral: true });
-        }
-
-        const stats = await getStats(user.id);
-        const currentCount = stats.byType[eventType] || 0;
-        let newCount, messageText;
-        
-        if (countInput.startsWith('-')) {
-            const subtract = parseInt(countInput);
-            newCount = Math.max(0, currentCount + subtract);
-            messageText = `✅ Removed **${Math.abs(subtract)}** events!`;
-        } else {
-            newCount = parseInt(countInput);
-            messageText = `✅ Set events to **${newCount}**!`;
-        }
-
-        await updateStats(user.id, { 
-            [`byType.${eventType}`]: newCount
+    // --- Top rating ---
+    if(command==='toprating'){
+        const hostRatings=new Map();
+        eventRatings.forEach(r=>{
+            if(!hostRatings.has(r.host)) hostRatings.set(r.host,{likes:0,dislikes:0,events:0});
+            const data=hostRatings.get(r.host);
+            data.likes+=r.likes; data.dislikes+=r.dislikes; data.events++;
         });
-        
-        const updatedStats = await getStats(user.id);
-        const totalEvents = Object.values(updatedStats.byType).reduce((a, b) => a + b, 0);
-        await updateStats(user.id, { eventsHosted: totalEvents });
 
-        await message.reply({ content: messageText, ephemeral: true });
-        return;
+        const sorted=Array.from(hostRatings.entries()).filter(([_,d])=>d.likes+d.dislikes>=5)
+            .map(([hostId,d])=>{const t=d.likes+d.dislikes; return {hostId,likes:d.likes,dislikes:d.dislikes,percent:Math.round(d.likes/t),events:d.events};})
+            .sort((a,b)=>b.percent-a.percent || b.likes-a.likes).slice(0,10);
+        if(sorted.length===0) return message.reply({ content:'❌ No ratings yet!', ephemeral:true });
+
+        let leaderboard='';
+        sorted.forEach((e,i)=>{const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`; leaderboard+=`${medal} <@${e.hostId}> - ${e.percent}% (${e.likes}👍 / ${e.dislikes}👎) in ${e.events} events\n`;});
+
+        const embed=new EmbedBuilder().setColor(0xFFD700).setTitle('🏆 Top Rated Hosts').setDescription(leaderboard)
+            .setFooter({ text:'Minimum 5 ratings required' }).setTimestamp();
+        return message.reply({ embeds:[embed] });
     }
 
-    // === КОМАНДА: -toprating ===
-    if (command === 'toprating') {
-        const hostRatings = new Map();
-        
-        eventRatings.forEach((rating) => {
-            if (!hostRatings.has(rating.host)) {
-                hostRatings.set(rating.host, { likes: 0, dislikes: 0, events: 0 });
-            }
-            const data = hostRatings.get(rating.host);
-            data.likes += rating.likes;
-            data.dislikes += rating.dislikes;
-            data.events++;
-        });
-        
-        const sorted = Array.from(hostRatings.entries())
-            .filter(([_, data]) => data.likes + data.dislikes >= 5)
-            .map(([hostId, data]) => {
-                const total = data.likes + data.dislikes;
-                const percent = Math.round((data.likes / total) * 100);
-                return { hostId, likes: data.likes, dislikes: data.dislikes, percent, events: data.events };
-            })
-            .sort((a, b) => b.percent - a.percent || b.likes - a.likes)
-            .slice(0, 10);
-        
-        if (sorted.length === 0) {
-            return message.reply({ content: '❌ No ratings yet (min 5 votes)!', ephemeral: true });
-        }
-        
-        let leaderboard = '';
-        sorted.forEach((entry, index) => {
-            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
-            leaderboard += `${medal} <@${entry.hostId}> - ${entry.percent}% (${entry.likes}👍 / ${entry.dislikes}👎)\n`;
-        });
-        
-        const embed = new EmbedBuilder()
-            .setColor(0xFFD700)
-            .setTitle('🏆 Top Rated Hosts')
-            .setDescription(leaderboard)
-            .setTimestamp();
-        
-        await message.reply({ embeds: [embed] });
-        return;
-    }
-
-    // === КОМАНДА: -help ===
-    if (command === 'help') {
-        const embed = new EmbedBuilder()
-            .setColor(0x0099FF)
-            .setTitle('📖 RBX Host Bot Commands')
-            .setDescription('**Host Commands:**')
+    // --- Help ---
+    if(command==='help'){
+        const embed=new EmbedBuilder().setColor(0x0099FF).setTitle('📖 RBX Host Bot Commands').setDescription('**Host Commands:**')
             .addFields(
-                { name: '-community <robux>', value: `Host Community event (${EVENT_TYPES.community.min}-${EVENT_TYPES.community.max} R$)`, inline: false },
-                { name: '-plus <robux>', value: `Host Plus event (${EVENT_TYPES.plus.min}-${EVENT_TYPES.plus.max} R$)`, inline: false },
-                { name: '-super <robux>', value: `Host Super event (${EVENT_TYPES.super.min}-${EVENT_TYPES.super.max} R$)`, inline: false },
-                { name: '-ultra <robux>', value: `Host Ultra event (${EVENT_TYPES.ultra.min}-${EVENT_TYPES.ultra.max} R$)`, inline: false },
-                { name: '-ultimate <robux>', value: `Host Ultimate event (${EVENT_TYPES.ultimate.min}-${EVENT_TYPES.ultimate.max} R$)`, inline: false },
-                { name: '-extreme <robux>', value: `Host Extreme event (${EVENT_TYPES.extreme.min}-${EVENT_TYPES.extreme.max} R$)`, inline: false },
-                { name: '-godly <robux>', value: `Host Godly event (${EVENT_TYPES.godly.min}-${EVENT_TYPES.godly.max} R$)`, inline: false },
-                { name: '-status [user]', value: 'View host statistics', inline: false },
-                { name: '-help', value: 'Show this help message', inline: false },
-                { name: '**Admin Commands:**', value: 'Requires admin role', inline: false },
-                { name: '-setstats @user <robux>', value: 'Set or subtract Robux (use -50 to subtract)', inline: false },
-                { name: '-seteventstats @user <type> <count>', value: 'Set event count for specific type', inline: false }
-            )
-            .setTimestamp();
-
-        await message.channel.send({ embeds: [embed] });
-        return;
+                { name:'-community <robux>', value:'Host Community event', inline:false },
+                { name:'-plus <robux>', value:'Host Plus event', inline:false },
+                { name:'-super <robux>', value:'Host Super event', inline:false },
+                { name:'-ultra <robux>', value:'Host Ultra event', inline:false },
+                { name:'-ultimate <robux>', value:'Host Ultimate event', inline:false },
+                { name:'-extreme <robux>', value:'Host Extreme event', inline:false },
+                { name:'-godly <robux>', value:'Host Godly event', inline:false },
+                { name:'-status [user]', value:'View host stats & rating', inline:false },
+                { name:'-toprating', value:'Show top rated hosts', inline:false },
+                { name:'-help', value:'Show this message', inline:false },
+                { name:'**Admin Commands:**', value:'Requires admin role', inline:false },
+                { name:'-setstats @user <robux>', value:'Set Robux or use -50 to subtract', inline:false },
+                { name:'-seteventstats @user <type> <count>', value:'Set events or use -5 to subtract', inline:false }
+            ).setFooter({ text:'Each event type has its own channel and role requirement' }).setTimestamp();
+        return message.channel.send({ embeds:[embed] });
     }
 });
 
-// === ОБРАБОТКА РЕАКЦИЙ ===
+// --- Кнопки ---
+client.on(Events.InteractionCreate, async interaction=>{
+    if(!interaction.isButton()) return;
+    const messageId=interaction.message.id;
+    const rating=eventRatings.get(messageId);
+    if(!rating) return interaction.reply({ content:'Event not found', ephemeral:true });
 
-client.on(Events.MessageReactionAdd, async (reaction, user) => {
-    if (user.bot) return;
-    if (!['👍', '👎'].includes(reaction.emoji.name)) return;
+    const voteType=interaction.customId.startsWith('like')?'like':'dislike';
+    const prevVote=rating.votes[interaction.user.id];
 
-    const rating = eventRatings.get(reaction.message.id);
-    if (!rating) return;
+    // Отмена предыдущего голоса
+    if(prevVote==='like') rating.likes--;
+    if(prevVote==='dislike') rating.dislikes--;
 
-    if (rating.rated.includes(user.id)) {
-        const msg = reaction.message;
-        const otherEmoji = reaction.emoji.name === '👍' ? '👎' : '👍';
-        const otherReaction = msg.reactions.resolve(otherEmoji);
-        
-        if (otherReaction) {
-            const users = await otherReaction.users.fetch();
-            if (users.has(user.id)) {
-                await otherReaction.users.remove(user.id);
-                if (otherEmoji === '👍') rating.likes = Math.max(0, rating.likes - 1);
-                else rating.dislikes = Math.max(0, rating.dislikes - 1);
-            }
-        }
-    } else {
-        rating.rated.push(user.id);
-    }
+    rating.votes[interaction.user.id]=voteType;
+    if(voteType==='like') rating.likes++; else rating.dislikes++;
 
-    if (reaction.emoji.name === '👍') rating.likes++;
-    else if (reaction.emoji.name === '👎') rating.dislikes++;
+    const row=new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`like_${messageId}`).setLabel(`👍 ${rating.likes}`).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`dislike_${messageId}`).setLabel(`👎 ${rating.dislikes}`).setStyle(ButtonStyle.Danger)
+    );
 
-    await updateRatingEmbed(reaction.message, rating);
+    await interaction.message.edit({ components:[row] });
+    await updateRatingEmbed(interaction.message, rating);
+    saveRatings();
+
+    await interaction.reply({ content:'✅ Vote counted!', ephemeral:true });
 });
 
-client.on(Events.MessageReactionRemove, async (reaction, user) => {
-    if (user.bot) return;
-    if (!['👍', ''].includes(reaction.emoji.name)) return;
-
-    const rating = eventRatings.get(reaction.message.id);
-    if (!rating) return;
-    if (!rating.rated.includes(user.id)) return;
-
-    rating.rated = rating.rated.filter(id => id !== user.id);
-
-    if (reaction.emoji.name === '👍') rating.likes = Math.max(0, rating.likes - 1);
-    else if (reaction.emoji.name === '👎') rating.dislikes = Math.max(0, rating.dislikes - 1);
-
-    await updateRatingEmbed(reaction.message, rating);
-});
-
-// === ЗАПУСК ===
 client.login(process.env.DISCORD_TOKEN);
