@@ -1970,12 +1970,13 @@ async function handleWordBombTimeout(message, game) {
 async function handleWordBombWord(message, game, userId, word) {
     try {
         if (!game?.active) return false;
-        
+
         const player = game.players.get(userId);
         if (!player) return false;
 
         const lowerWord = word.toLowerCase().trim();
 
+        // Проверка на повтор
         if (game.usedWords.some(w => w.toLowerCase() === lowerWord)) {
             player.bombs++;
 
@@ -2033,9 +2034,15 @@ async function handleWordBombWord(message, game, userId, word) {
             const nextIndex = (currentIndex + 1) % playerIds.length;
             game.currentTurn = playerIds[nextIndex];
 
+            await WordBomb.findOneAndUpdate(
+                { messageId: message.id },
+                { currentTurn: game.currentTurn }
+            );
+
             return true;
         }
 
+        // Слово принято
         player.wordsGuessed++;
         game.usedWords.push(word);
 
@@ -2043,10 +2050,12 @@ async function handleWordBombWord(message, game, userId, word) {
             .setColor(0x00FF00)
             .setTitle('✅ Good!')
             .setDescription(`**<@${userId}>**: "**${word}**" - Accepted!`)
+            .setFooter({ text: `Used words: ${game.usedWords.length}` })
             .setTimestamp();
 
         await message.edit({ embeds: [acceptEmbed], components: [] });
 
+        // Передаём ход следующему
         const playerIds = Array.from(game.players.keys());
         const currentIndex = playerIds.indexOf(userId);
         const nextIndex = (currentIndex + 1) % playerIds.length;
