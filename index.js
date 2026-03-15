@@ -1104,7 +1104,7 @@ if (cmd === 'hilo') {
 
     return;
 }
-
+ 
         // === WORD BOMB ===
         if (cmd === 'wordbomb') {
             let timeSeconds = 30;
