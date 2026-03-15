@@ -318,11 +318,12 @@ client.once(Events.ClientReady, async () => {
 // Messages / Commands
 // ────────────────────────────────────────────────
 client.on(Events.MessageCreate, async (message) => {
-    if (message.author.bot || !message.guild || !message.content.startsWith('-')) return;
+    try {
+        if (message.author.bot || !message.guild || !message.content.startsWith('-')) return;
 
-    const args = message.content.slice(1).trim().split(/ +/);
-    const cmd = args.shift()?.toLowerCase();
-    if (!cmd) return;
+        const args = message.content.slice(1).trim().split(/ +/);
+        const cmd = args.shift()?.toLowerCase();
+        if (!cmd) return;
 
     // === CREATE EVENT ===
     if (EVENT_TYPES[cmd]) {
@@ -1089,6 +1090,10 @@ client.on(Events.MessageCreate, async (message) => {
         await HostStats.updateOne({ userId: user.id }, { eventsHosted: total });
 
         return message.reply(`✅ ${EVENT_TYPES[type].name}: **${newCount}**`);
+    }
+    } catch (err) {
+        console.error('Command error:', err);
+        message.reply('❌ An error occurred while processing this command.').catch(() => {});
     }
 });
 
