@@ -901,6 +901,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     // === WORD BOMB ===
     if (cmd === 'wordbomb') {
+        console.log('Word Bomb command triggered by', message.author.tag);
         let timeSeconds = 30;
         if (args[0]) {
             const parsed = parseInt(args[0]);
