@@ -380,25 +380,25 @@ client.once(Events.ClientReady, async () => {
         console.log(`⚔️ Loaded ${activeBattles.size} active battles`);
 
         // 🔥 FIX: HILO — правильная конвертация players массив → Map
-        const hiloGames = await HiLo.find({ active: true });
-        for (const game of hiloGames) {
-            const playersMap = new Map(
-                game.players.map(p => [
-                    p.userId,
-                    { score: p.score, highScore: p.highScore, currentNumber: p.currentNumber }
-                ])
-            );
-            
-            activeHiLo.set(game.messageId, {
-                _id: game._id,
-                host: game.host,
-                players: playersMap,
-                currentTurn: game.currentTurn,
-                currentNumber: game.currentNumber,
-                active: game.active
-            });
-        }
-        console.log(`📈 Loaded ${activeHiLo.size} active Hi-Lo games`);
+const hiloGames = await HiLo.find({ active: true });
+for (const game of hiloGames) {
+    const playersMap = new Map(
+        game.players.map(p => [
+            p.userId,
+            { score: p.score, highScore: p.highScore, currentNumber: p.currentNumber }
+        ])
+    );
+    
+    activeHiLo.set(game.messageId, {
+        _id: game._id,
+        host: game.host,
+        players: playersMap,  // ✅ Map
+        currentTurn: game.currentTurn,
+        currentNumber: game.currentNumber,
+        active: game.active
+    });
+}
+console.log(`📈 Loaded ${activeHiLo.size} active Hi-Lo games`);
 
         // 🔥 FIX: Word Bomb — правильная конвертация players массив → Map
         const wordBombGames = await WordBomb.find({ active: true });
@@ -619,129 +619,145 @@ client.on(Events.MessageCreate, async (message) => {
             return message.channel.send({ embeds: [embed] });
         }
 
-        // === TIC-TAC-TOE ===
-        if (cmd === 'ttt') {
-            const opponent = message.mentions.users.first();
-            if (!opponent || opponent.bot) {
-                return message.reply('❌ Mention a valid user to play against (not a bot)');
-            }
-            if (opponent.id === message.author.id) {
-                return message.reply('❌ You cannot play against yourself');
-            }
+        // ────────────────────────────────────────────────
+        // TIC-TAC-TOE COMMAND 🔥 FIX — Вход работает
+        // ────────────────────────────────────────────────
+if (cmd === 'ttt') {
+    const opponent = message.mentions.users.first();
+    if (!opponent || opponent.bot) {
+        return message.reply('❌ Mention a valid user to play against (not a bot)');
+    }
+    if (opponent.id === message.author.id) {
+        return message.reply('❌ You cannot play against yourself');
+    }
 
-            const embed = new EmbedBuilder()
-                .setColor(0x5865F2)
-                .setTitle('⭕ Tic-Tac-Toe Challenge')
-                .setDescription(`**<@${message.author.id}>** challenged **<@${opponent.id}>** to a game of Tic-Tac-Toe!\n\n<@${opponent.id}>, do you accept?`)
-                .setFooter({ text: 'Challenge expires in 30 seconds' })
-                .setTimestamp(Date.now() + 30000);
+    const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('⭕ Tic-Tac-Toe Challenge')
+        .setDescription(`**<@${message.author.id}>** challenged **<@${opponent.id}>** to a game of Tic-Tac-Toe!\n\n<@${opponent.id}>, do you accept?`)
+        .setFooter({ text: 'Challenge expires in 30 seconds' })
+        .setTimestamp(Date.now() + 30000);
 
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('ttt_accept')
-                        .setLabel('Accept')
-                        .setStyle(ButtonStyle.Success)
-                        .setEmoji('✅'),
-                    new ButtonBuilder()
-                        .setCustomId('ttt_decline')
-                        .setLabel('Decline')
-                        .setStyle(ButtonStyle.Danger)
-                        .setEmoji('❌')
-                );
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('ttt_accept')
+                .setLabel('Accept')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('✅'),
+            new ButtonBuilder()
+                .setCustomId('ttt_decline')
+                .setLabel('Decline')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('❌')
+        );
 
-            const msg = await message.channel.send({ embeds: [embed], components: [row] });
+    const msg = await message.channel.send({ embeds: [embed], components: [row] });
 
-            const collector = msg.createMessageComponentCollector({
-                filter: i => i.user.id === opponent.id && !i.user.bot,
-                time: 30000
-            });
+    const collector = msg.createMessageComponentCollector({
+        filter: i => i.user.id === opponent.id && !i.user.bot,
+        time: 30000
+    });
 
-            collector.on('collect', async (interaction) => {
-                if (interaction.customId === 'ttt_decline') {
-                    await interaction.update({
-                        embeds: [new EmbedBuilder()
-                            .setColor(0xFF0000)
-                            .setTitle('⭕ Tic-Tac-Toe')
-                            .setDescription(`<@${opponent.id}> declined the challenge!`)
-                            .setTimestamp()],
-                        components: []
-                    });
-                    return;
-                }
-
-                if (interaction.customId === 'ttt_accept') {
-                    const board = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
-                    const gameEmbed = new EmbedBuilder()
-                        .setColor(0x5865F2)
+    collector.on('collect', async (interaction) => {
+        if (interaction.customId === 'ttt_decline') {
+            try {
+                await interaction.update({
+                    embeds: [new EmbedBuilder()
+                        .setColor(0xFF0000)
                         .setTitle('⭕ Tic-Tac-Toe')
-                        .setDescription(`**<@${message.author.id}>** vs **<@${opponent.id}>**\n\n<@${message.author.id}> is **X** - Your turn!\n\n\`\`\`\n ${board[0]} │ ${board[1]} │ ${board[2]} \n───┼───┼───\n ${board[3]} │ ${board[4]} │ ${board[5]} \n───┼───┼───\n ${board[6]} │ ${board[7]} │ ${board[8]} \n\`\`\``)
-                        .setFooter({ text: 'Click a button to place your mark' })
-                        .setTimestamp();
-
-                    const row1 = new ActionRowBuilder()
-                        .addComponents(
-                            new ButtonBuilder().setCustomId('ttt_0').setLabel('1').setStyle(ButtonStyle.Secondary),
-                            new ButtonBuilder().setCustomId('ttt_1').setLabel('2').setStyle(ButtonStyle.Secondary),
-                            new ButtonBuilder().setCustomId('ttt_2').setLabel('3').setStyle(ButtonStyle.Secondary)
-                        );
-                    const row2 = new ActionRowBuilder()
-                        .addComponents(
-                            new ButtonBuilder().setCustomId('ttt_3').setLabel('4').setStyle(ButtonStyle.Secondary),
-                            new ButtonBuilder().setCustomId('ttt_4').setLabel('5').setStyle(ButtonStyle.Secondary),
-                            new ButtonBuilder().setCustomId('ttt_5').setLabel('6').setStyle(ButtonStyle.Secondary)
-                        );
-                    const row3 = new ActionRowBuilder()
-                        .addComponents(
-                            new ButtonBuilder().setCustomId('ttt_6').setLabel('7').setStyle(ButtonStyle.Secondary),
-                            new ButtonBuilder().setCustomId('ttt_7').setLabel('8').setStyle(ButtonStyle.Secondary),
-                            new ButtonBuilder().setCustomId('ttt_8').setLabel('9').setStyle(ButtonStyle.Secondary)
-                        );
-
-                    await interaction.update({ embeds: [gameEmbed], components: [row1, row2, row3] });
-
-                    await TicTacToe.create({
-                        messageId: msg.id,
-                        channelId: msg.channel.id,
-                        playerX: message.author.id,
-                        playerO: opponent.id,
-                        currentTurn: message.author.id,
-                        board,
-                        winner: null
-                    });
-
-                    activeTicTacToe.set(msg.id, {
-                        _id: msg.id,
-                        playerX: message.author.id,
-                        playerO: opponent.id,
-                        currentTurn: message.author.id,
-                        board,
-                        winner: null,
-                        active: true
-                    });
-                }
-            });
-
-            collector.on('end', async (collected) => {
-                if (collected.size === 0) {
-                    await msg.edit({
-                        embeds: [new EmbedBuilder()
-                            .setColor(0xFFA500)
-                            .setTitle('⭕ Tic-Tac-Toe')
-                            .setDescription(`<@${opponent.id}> didn't respond in time!`)
-                            .setTimestamp()],
-                        components: []
-                    });
-                }
-            });
-
+                        .setDescription(`<@${opponent.id}> declined the challenge!`)
+                        .setTimestamp()],
+                    components: []
+                });
+            } catch (e) {}
             return;
         }
 
-        // === BATTLE ===
+        if (interaction.customId === 'ttt_accept') {
+            const board = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+            const gameEmbed = new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setTitle('⭕ Tic-Tac-Toe')
+                .setDescription(`**<@${message.author.id}>** vs **<@${opponent.id}>**\n\n<@${message.author.id}> is **X** - Your turn!\n\n${renderBoard(board)}`)
+                .setFooter({ text: 'Click a button to place your mark' })
+                .setTimestamp();
+
+            const row1 = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder().setCustomId('ttt_0').setLabel('1').setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('ttt_1').setLabel('2').setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('ttt_2').setLabel('3').setStyle(ButtonStyle.Secondary)
+                );
+            const row2 = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder().setCustomId('ttt_3').setLabel('4').setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('ttt_4').setLabel('5').setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('ttt_5').setLabel('6').setStyle(ButtonStyle.Secondary)
+                );
+            const row3 = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder().setCustomId('ttt_6').setLabel('7').setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('ttt_7').setLabel('8').setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('ttt_8').setLabel('9').setStyle(ButtonStyle.Secondary)
+                );
+
+            try {
+                await interaction.update({ embeds: [gameEmbed], components: [row1, row2, row3] });
+            } catch (e) {}
+
+            // ✅ Создаём в БД
+            try {
+                await TicTacToe.create({
+                    messageId: msg.id,
+                    channelId: msg.channel.id,
+                    playerX: message.author.id,
+                    playerO: opponent.id,
+                    currentTurn: message.author.id,
+                    board,
+                    winner: null,
+                    active: true
+                });
+                console.log('✅ TTT created in database');
+            } catch (err) {
+                console.error('❌ Failed to create TTT in DB:', err.message);
+                return;
+            }
+
+            // ✅ Добавляем в кэш
+            activeTicTacToe.set(msg.id, {
+                _id: msg.id,
+                playerX: message.author.id,
+                playerO: opponent.id,
+                currentTurn: message.author.id,
+                board: [...board],  // ✅ Копия массива
+                winner: null,
+                active: true
+            });
+            console.log('✅ TTT added to cache. Players:', message.author.id, 'vs', opponent.id);
+        }
+    });
+
+    collector.on('end', async (collected) => {
+        if (collected.size === 0) {
+            try {
+                await msg.edit({
+                    embeds: [new EmbedBuilder()
+                        .setColor(0xFFA500)
+                        .setTitle('⭕ Tic-Tac-Toe')
+                        .setDescription(`<@${opponent.id}> didn't respond in time!`)
+                        .setTimestamp()],
+                    components: []
+                });
+            } catch (e) {}
+        }
+    });
+
+    return;
+}
         // ────────────────────────────────────────────────
-// BATTLE COMMAND 🔥 FIX — Вход работает
-// ────────────────────────────────────────────────
+        // BATTLE COMMAND 🔥 FIX — Вход работает
+        // ────────────────────────────────────────────────
 if (cmd === 'battle') {
     let timeSeconds = 30;
     if (args[0]) {
@@ -914,149 +930,173 @@ if (cmd === 'battle') {
 }
 
         // === HILO ===
-        if (cmd === 'hilo') {
-            let timeSeconds = 30;
-            if (args[0]) {
-                const parsed = parseInt(args[0]);
-                if (!isNaN(parsed) && parsed >= 10 && parsed <= 300) {
-                    timeSeconds = parsed;
-                }
+        // ────────────────────────────────────────────────
+// HILO COMMAND 🔥 FIX — Вход работает
+// ────────────────────────────────────────────────
+if (cmd === 'hilo') {
+    let timeSeconds = 30;
+    if (args[0]) {
+        const parsed = parseInt(args[0]);
+        if (!isNaN(parsed) && parsed >= 10 && parsed <= 300) {
+            timeSeconds = parsed;
+        }
+    }
+
+    const startTime = Math.floor(Date.now() / 1000) + timeSeconds;
+    const startNumber = Math.floor(Math.random() * 100) + 1;
+
+    const embed = new EmbedBuilder()
+        .setColor(0x00AE86)
+        .setTitle('📈 HILO')
+        .setDescription('**Guess Higher or Lower!**\n❌ Wrong guess = **Eliminated**\n🏆 Last player standing wins!')
+        .addFields(
+            { name: '👥 Players', value: '**0** / ∞\n*No one has joined yet*', inline: false },
+            { name: '🔢 Starting Number', value: `**${startNumber}**`, inline: true },
+            { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+            { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
+        )
+        .setFooter({ text: 'Click "Join" or "Leave" before game starts!' })
+        .setTimestamp(startTime * 1000);
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('hilo_join')
+                .setLabel('Join HILO')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('📈'),
+            new ButtonBuilder()
+                .setCustomId('hilo_leave')
+                .setLabel('Leave')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('🚪')
+        );
+
+    const msg = await message.channel.send({ embeds: [embed], components: [row] });
+
+    const players = new Map();
+
+    async function updatePlayersEmbed() {
+        const list = Array.from(players.keys()).map(id => `✅ <@${id}>`).join('\n') || '*No one has joined yet*';
+        const newEmbed = EmbedBuilder.from(embed.toJSON())
+            .setFields(
+                { name: '👥 Players', value: `**${players.size}** / ∞\n${list}`, inline: false },
+                { name: '🔢 Starting Number', value: `**${startNumber}**`, inline: true },
+                { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+                { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
+            );
+        try { await msg.edit({ embeds: [newEmbed] }); } catch (e) {}
+    }
+
+    const collector = msg.createMessageComponentCollector({
+        filter: i => ['hilo_join', 'hilo_leave'].includes(i.customId) && !i.user.bot,
+        time: timeSeconds * 1000
+    });
+
+    collector.on('collect', async (interaction) => {
+        if (interaction.customId === 'hilo_join') {
+            if (!players.has(interaction.user.id)) {
+                players.set(interaction.user.id, { score: 0, highScore: 0, currentNumber: startNumber });
+                await interaction.reply({ content: '✅ You joined HILO! Good luck! 🍀', ephemeral: true });
+                await updatePlayersEmbed();
+            } else {
+                await interaction.reply({ content: '⚠️ You are already in this game!', ephemeral: true });
             }
-
-            const startTime = Math.floor(Date.now() / 1000) + timeSeconds;
-            const startNumber = Math.floor(Math.random() * 100) + 1;
-
-            const embed = new EmbedBuilder()
-                .setColor(0x00AE86)
-                .setTitle('📈 HILO')
-                .setDescription('**Guess Higher or Lower!**\n❌ Wrong guess = **Eliminated**\n🏆 Last player standing wins!')
-                .addFields(
-                    { name: '👥 Players', value: '**0** / ∞\n*No one has joined yet*', inline: false },
-                    { name: '🔢 Starting Number', value: `**${startNumber}**`, inline: true },
-                    { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
-                    { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
-                )
-                .setFooter({ text: 'Click "Join" or "Leave" before game starts!' })
-                .setTimestamp(startTime * 1000);
-
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('hilo_join')
-                        .setLabel('Join HILO')
-                        .setStyle(ButtonStyle.Success)
-                        .setEmoji('📈'),
-                    new ButtonBuilder()
-                        .setCustomId('hilo_leave')
-                        .setLabel('Leave')
-                        .setStyle(ButtonStyle.Secondary)
-                        .setEmoji('🚪')
-                );
-
-            const msg = await message.channel.send({ embeds: [embed], components: [row] });
-
-            const players = new Map();
-
-            async function updatePlayersEmbed() {
-                const list = Array.from(players.keys()).map(id => `✅ <@${id}>`).join('\n') || '*No one has joined yet*';
-                const newEmbed = EmbedBuilder.from(embed.toJSON())
-                    .setFields(
-                        { name: '👥 Players', value: `**${players.size}** / ∞\n${list}`, inline: false },
-                        { name: '🔢 Starting Number', value: `**${startNumber}**`, inline: true },
-                        { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
-                        { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
-                    );
-                try { await msg.edit({ embeds: [newEmbed] }); } catch (e) {}
-            }
-
-            const collector = msg.createMessageComponentCollector({
-                filter: i => ['hilo_join', 'hilo_leave'].includes(i.customId) && !i.user.bot,
-                time: timeSeconds * 1000
-            });
-
-            collector.on('collect', async (interaction) => {
-                if (interaction.customId === 'hilo_join') {
-                    if (!players.has(interaction.user.id)) {
-                        players.set(interaction.user.id, { score: 0, highScore: 0, currentNumber: startNumber });
-                        await interaction.reply({ content: '✅ You joined HILO! Good luck! 🍀', ephemeral: true });
-                        await updatePlayersEmbed();
-                    } else {
-                        await interaction.reply({ content: '⚠️ You are already in this game!', ephemeral: true });
-                    }
-                    return;
-                }
-
-                if (interaction.customId === 'hilo_leave') {
-                    if (players.has(interaction.user.id)) {
-                        players.delete(interaction.user.id);
-                        await interaction.reply({ content: '🚪 You left HILO!', ephemeral: true });
-                        await updatePlayersEmbed();
-                    } else {
-                        await interaction.reply({ content: '❌ You are not in this game!', ephemeral: true });
-                    }
-                    return;
-                }
-            });
-
-            collector.on('end', async () => {
-                if (players.size < 2) {
-                    return msg.edit({
-                        embeds: [new EmbedBuilder()
-                            .setColor(0x00AE86)
-                            .setTitle('❌ HILO Cancelled')
-                            .setDescription(`Not enough players (need at least 2, got **${players.size}**)`)],
-                        components: []
-                    });
-                }
-
-                const playersArray = Array.from(players.entries()).map(([userId, data]) => ({
-                    userId,
-                    score: data.score,
-                    highScore: data.highScore,
-                    currentNumber: data.currentNumber
-                }));
-
-                await HiLo.create({
-                    messageId: msg.id,
-                    channelId: msg.channel.id,
-                    host: message.author.id,
-                    players: playersArray,
-                    currentNumber: startNumber,
-                    currentTurn: Array.from(players.keys())[0]
-                });
-
-                // 🔥 FIX: Правильная структура кэша
-                activeHiLo.set(msg.id, {
-                    _id: msg.id,
-                    host: message.author.id,
-                    players: new Map(players),
-                    currentTurn: Array.from(players.keys())[0],
-                    currentNumber: startNumber,
-                    active: true
-                });
-
-                await msg.edit({
-                    content: `📈 **HILO Game Started!** ${Array.from(players.keys()).map(id => `<@${id}>`).join(' ')}`,
-                    embeds: [new EmbedBuilder()
-                        .setColor(0x00AE86)
-                        .setTitle('📈 HILO - Game Started!')
-                        .setDescription(`**${players.size} players joined!**\n\nFirst number: **${startNumber}**`)
-                        .setFooter({ text: 'Game in progress...' })
-                        .setTimestamp()],
-                    components: []
-                });
-
-                setTimeout(() => {
-                    const game = activeHiLo.get(msg.id);
-                    if (game?.active) {
-                        console.log('📈 Starting HILO, players:', game.players.size);
-                        startHiloRound(msg, game);
-                    }
-                }, 3000);
-            });
-
             return;
         }
+
+        if (interaction.customId === 'hilo_leave') {
+            if (players.has(interaction.user.id)) {
+                players.delete(interaction.user.id);
+                await interaction.reply({ content: '🚪 You left HILO!', ephemeral: true });
+                await updatePlayersEmbed();
+            } else {
+                await interaction.reply({ content: '❌ You are not in this game!', ephemeral: true });
+            }
+            return;
+        }
+    });
+
+    collector.on('end', async (collected, reason) => {
+        console.log('📈 HILO collector ended. Reason:', reason, 'Players:', players.size);
+        
+        // ✅ Проверка количества игроков
+        if (players.size < 2) {
+            console.log('❌ HILO cancelled - not enough players');
+            try {
+                await msg.edit({
+                    embeds: [new EmbedBuilder()
+                        .setColor(0x00AE86)
+                        .setTitle('❌ HILO Cancelled')
+                        .setDescription(`Not enough players (need at least 2, got **${players.size}**)`)],
+                    components: []
+                });
+            } catch (e) {}
+            return;
+        }
+
+        const playersArray = Array.from(players.entries()).map(([userId, data]) => ({
+            userId,
+            score: data.score,
+            highScore: data.highScore,
+            currentNumber: data.currentNumber
+        }));
+
+        // ✅ Создаём в БД
+        try {
+            await HiLo.create({
+                messageId: msg.id,
+                channelId: msg.channel.id,
+                host: message.author.id,
+                players: playersArray,
+                currentNumber: startNumber,
+                currentTurn: Array.from(players.keys())[0],
+                active: true
+            });
+            console.log('✅ HILO created in database');
+        } catch (err) {
+            console.error('❌ Failed to create HILO in DB:', err.message);
+            return;
+        }
+
+        // ✅ Добавляем в кэш с ПРАВИЛЬНОЙ структурой (Map)
+        activeHiLo.set(msg.id, {
+            _id: msg.id,
+            host: message.author.id,
+            players: new Map(players),  // ✅ Map
+            currentTurn: Array.from(players.keys())[0],
+            currentNumber: startNumber,
+            active: true
+        });
+        console.log('✅ HILO added to cache. Players:', players.size);
+
+        await msg.edit({
+            content: `📈 **HILO Game Started!** ${Array.from(players.keys()).map(id => `<@${id}>`).join(' ')}`,
+            embeds: [new EmbedBuilder()
+                .setColor(0x00AE86)
+                .setTitle('📈 HILO - Game Started!')
+                .setDescription(`**${players.size} players joined!**\n\nFirst number: **${startNumber}**`)
+                .setFooter({ text: 'Game in progress...' })
+                .setTimestamp()],
+            components: []
+        });
+        console.log('✅ HILO start message edited');
+
+        // ✅ Запускаем первый раунд через 3 секунды
+        setTimeout(() => {
+            const game = activeHiLo.get(msg.id);
+            console.log('⏰ HILO timeout fired. Game in cache:', !!game, 'Active:', game?.active);
+            if (game && game.active) {
+                console.log('📈 Starting HILO Round 1, players:', game.players.size);
+                startHiloRound(msg, game);
+            } else {
+                console.log('❌ HILO not found or not active, skipping round 1');
+            }
+        }, 3000);
+    });
+
+    return;
+}
 
         // === WORD BOMB ===
         if (cmd === 'wordbomb') {
@@ -1339,7 +1379,7 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
 });
 
 // ────────────────────────────────────────────────
-// Tic-Tac-Toe Functions
+// Tic-Tac-Toe Functions 🔥 FIX
 // ────────────────────────────────────────────────
 function checkTicTacToeWinner(board) {
     const wins = [
@@ -1348,10 +1388,14 @@ function checkTicTacToeWinner(board) {
         [0, 4, 8], [2, 4, 6]
     ];
     for (const [a, b, c] of wins) {
-        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+        if (board[a] && board[a] !== '1' && board[a] !== '2' && board[a] !== '3' && 
+            board[a] !== '4' && board[a] !== '5' && board[a] !== '6' && 
+            board[a] !== '7' && board[a] !== '8' && board[a] !== '9' &&
+            board[a] === board[b] && board[a] === board[c]) {
             return board[a];
         }
     }
+    // ✅ Проверка на ничью — только X и O на доске
     if (!board.some(cell => cell !== 'X' && cell !== 'O')) {
         return 'draw';
     }
@@ -1566,12 +1610,18 @@ async function startBattleRound(message, battle) {
 }
 
 // ────────────────────────────────────────────────
-// HILO Functions 🔥 FIX
+// HILO Functions 🔥 FIX — Вход + Победа
 // ────────────────────────────────────────────────
 async function startHiloRound(message, game) {
     try {
-        if (!game?.active || !activeHiLo.has(message.id)) {
+        // ✅ Проверки активности
+        if (!game || !game.active) {
             console.log('⚠️ HILO not active, skipping round');
+            return;
+        }
+        
+        if (!activeHiLo.has(message.id)) {
+            console.log('⚠️ HILO not in cache, skipping round');
             return;
         }
         
@@ -1579,15 +1629,50 @@ async function startHiloRound(message, game) {
         const player = game.players.get(currentPlayerId);
         const currentNumber = game.currentNumber;
 
+        console.log('📈 HILO Round - Current player:', currentPlayerId, 'Number:', currentNumber, 'Players left:', game.players.size);
+
+        // ✅ Проверка: игрок всё ещё в игре?
         if (!player) {
             const playerIds = Array.from(game.players.keys());
             if (playerIds.length === 0) {
+                console.log('❌ HILO - No players left!');
                 game.active = false;
                 activeHiLo.delete(message.id);
+                await HiLo.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error);
                 return;
             }
             game.currentTurn = playerIds[0];
             return startHiloRound(message, game);
+        }
+
+        // ✅ Проверка победителя (остался 1 игрок)
+        if (game.players.size === 1) {
+            console.log('🏆 HILO Winner detected!');
+            const winnerId = Array.from(game.players.keys())[0];
+            const winner = game.players.get(winnerId);
+            
+            game.active = false;
+            activeHiLo.delete(message.id);
+            
+            const winEmbed = new EmbedBuilder()
+                .setColor(0xFFD700)
+                .setTitle('🏆 HILO - WINNER!')
+                .setDescription(`**🎉 <@${winnerId}> wins the game!**\n\nFinal High Score: **${winner.highScore}**`)
+                .setTimestamp();
+
+            try {
+                await message.edit({
+                    content: `🏆 **<@${winnerId}>** WINS HILO!`,
+                    embeds: [winEmbed],
+                    components: []
+                });
+                console.log('✅ HILO winner announced');
+            } catch (err) {
+                console.error('❌ Failed to announce HILO winner:', err.message);
+            }
+            
+            await HiLo.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error);
+            return;
         }
 
         const embed = new EmbedBuilder()
@@ -1612,19 +1697,25 @@ async function startHiloRound(message, game) {
             );
 
         await message.edit({ embeds: [embed], components: [row] });
+        console.log('✅ HILO round message edited');
     } catch (err) {
-        console.error('Error in startHiloRound:', err.message);
+        console.error('❌ Error in startHiloRound:', err.message);
     }
 }
 
 async function processHiloGuess(interaction, game, isHigher) {
     try {
-        if (!game?.active) return;
+        if (!game || !game.active) {
+            console.log('⚠️ HILO not active, ignoring guess');
+            return;
+        }
         
         const userId = interaction.user.id;
         const player = game.players.get(userId);
         const currentNumber = game.currentNumber;
         const newNumber = Math.floor(Math.random() * 100) + 1;
+
+        console.log('📈 HILO Guess - User:', userId, 'Guess:', isHigher ? 'Higher' : 'Lower', 'Current:', currentNumber, 'New:', newNumber);
 
         let correct = false;
         if (isHigher && newNumber > currentNumber) correct = true;
@@ -1663,6 +1754,7 @@ async function processHiloGuess(interaction, game, isHigher) {
                 if (game.active) await startHiloRound(interaction.message, game);
             }, 2000);
         } else {
+            console.log('❌ HILO - Player eliminated:', userId);
             game.players.delete(userId);
 
             await HiLo.findOneAndUpdate(
@@ -1679,7 +1771,9 @@ async function processHiloGuess(interaction, game, isHigher) {
 
             await interaction.update({ embeds: [embed], components: [] });
 
+            // ✅ ПРОВЕРКА ПОБЕДИТЕЛЯ — сразу после выбывания
             if (game.players.size === 1) {
+                console.log('🏆 HILO Winner detected after elimination!');
                 const winnerId = Array.from(game.players.keys())[0];
                 const winner = game.players.get(winnerId);
 
@@ -1690,11 +1784,16 @@ async function processHiloGuess(interaction, game, isHigher) {
                         .setDescription(`**🎉 <@${winnerId}> wins the game!**\n\nFinal High Score: **${winner.highScore}**`)
                         .setTimestamp();
 
-                    await interaction.message.edit({
-                        content: `🏆 **<@${winnerId}>** WINS HILO!`,
-                        embeds: [winEmbed],
-                        components: []
-                    });
+                    try {
+                        await interaction.message.edit({
+                            content: `🏆 **<@${winnerId}>** WINS HILO!`,
+                            embeds: [winEmbed],
+                            components: []
+                        });
+                        console.log('✅ HILO winner announced');
+                    } catch (err) {
+                        console.error('❌ Failed to announce HILO winner:', err.message);
+                    }
 
                     game.active = false;
                     activeHiLo.delete(interaction.message.id);
@@ -1703,10 +1802,11 @@ async function processHiloGuess(interaction, game, isHigher) {
                 return;
             }
 
+            // ✅ Передаём ход следующему игроку
             const playerIds = Array.from(game.players.keys());
             const currentIndex = playerIds.indexOf(userId);
-            const nextIndex = currentIndex >= playerIds.length - 1 ? 0 : currentIndex;
-            game.currentTurn = playerIds[nextIndex];
+            const nextIndex = currentIndex >= playerIds.length - 1 ? 0 : currentIndex + 1;
+            game.currentTurn = playerIds[nextIndex] || playerIds[0];
             game.currentNumber = newNumber;
 
             setTimeout(async () => {
@@ -1714,7 +1814,7 @@ async function processHiloGuess(interaction, game, isHigher) {
             }, 2000);
         }
     } catch (err) {
-        console.error('Error in processHiloGuess:', err.message);
+        console.error('❌ Error in processHiloGuess:', err.message);
     }
 }
 
