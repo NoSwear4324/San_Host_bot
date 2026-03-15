@@ -1969,16 +1969,29 @@ async function handleWordBombTimeout(message, game) {
 
 async function handleWordBombWord(message, game, userId, word) {
     try {
-        if (!game?.active) return false;
+        if (!game?.active) {
+            console.log('⚠️ Word Bomb not active');
+            return false;
+        }
 
         const player = game.players.get(userId);
-        if (!player) return false;
+        if (!player) {
+            console.log('⚠️ Player not found:', userId);
+            return false;
+        }
+
+        console.log('📝 Processing word:', word, 'from:', userId);
+        console.log('Current turn:', game.currentTurn, 'Used words:', game.usedWords);
 
         const lowerWord = word.toLowerCase().trim();
 
         // Проверка на повтор
-        if (game.usedWords.some(w => w.toLowerCase() === lowerWord)) {
+        const isRepeat = game.usedWords.some(w => w.toLowerCase() === lowerWord);
+        console.log('Is repeat:', isRepeat);
+
+        if (isRepeat) {
             player.bombs++;
+            console.log('💣 Repeat! Bombs:', player.bombs);
 
             const repeatEmbed = new EmbedBuilder()
                 .setColor(0xFF0000)
@@ -1989,6 +2002,7 @@ async function handleWordBombWord(message, game, userId, word) {
             await message.edit({ embeds: [repeatEmbed], components: [] });
 
             if (player.bombs >= 3) {
+                console.log('☠️ Player eliminated:', userId);
                 game.players.delete(userId);
 
                 const elimEmbed = new EmbedBuilder()
@@ -2029,10 +2043,12 @@ async function handleWordBombWord(message, game, userId, word) {
                 }
             }
 
+            // Передаём ход следующему
             const playerIds = Array.from(game.players.keys());
             const currentIndex = playerIds.indexOf(userId);
             const nextIndex = (currentIndex + 1) % playerIds.length;
             game.currentTurn = playerIds[nextIndex];
+            console.log('➡️ Next turn:', game.currentTurn);
 
             await WordBomb.findOneAndUpdate(
                 { messageId: message.id },
@@ -2045,6 +2061,7 @@ async function handleWordBombWord(message, game, userId, word) {
         // Слово принято
         player.wordsGuessed++;
         game.usedWords.push(word);
+        console.log('✅ Word accepted! Total words:', game.usedWords.length);
 
         const acceptEmbed = new EmbedBuilder()
             .setColor(0x00FF00)
@@ -2060,6 +2077,7 @@ async function handleWordBombWord(message, game, userId, word) {
         const currentIndex = playerIds.indexOf(userId);
         const nextIndex = (currentIndex + 1) % playerIds.length;
         game.currentTurn = playerIds[nextIndex];
+        console.log('➡️ Next turn:', game.currentTurn);
 
         await WordBomb.findOneAndUpdate(
             { messageId: message.id },
@@ -2071,7 +2089,7 @@ async function handleWordBombWord(message, game, userId, word) {
 
         return true;
     } catch (err) {
-        console.error('Error in handleWordBombWord:', err.message);
+        console.error('❌ Error in handleWordBombWord:', err.message);
         return false;
     }
 }
