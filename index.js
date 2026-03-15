@@ -978,13 +978,18 @@ if (cmd === 'hilo') {
 
     async function updatePlayersEmbed() {
         const list = Array.from(players.keys()).map(id => `✅ <@${id}>`).join('\n') || '*No one has joined yet*';
-        const newEmbed = EmbedBuilder.from(embed.toJSON())
+        const newEmbed = new EmbedBuilder()
+            .setColor(0x00AE86)
+            .setTitle('📈 HILO')
+            .setDescription('**Guess Higher or Lower!**\n❌ Wrong guess = **Eliminated**\n🏆 Last player standing wins!')
             .setFields(
                 { name: '👥 Players', value: `**${players.size}** / ∞\n${list}`, inline: false },
                 { name: '🔢 Starting Number', value: `**${startNumber}**`, inline: true },
                 { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
                 { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
-            );
+            )
+            .setFooter({ text: 'Click "Join" or "Leave" before game starts!' })
+            .setTimestamp(startTime * 1000);
         try { await msg.edit({ embeds: [newEmbed] }); } catch (e) {}
     }
 
@@ -997,6 +1002,7 @@ if (cmd === 'hilo') {
         if (interaction.customId === 'hilo_join') {
             if (!players.has(interaction.user.id)) {
                 players.set(interaction.user.id, { score: 0, highScore: 0, currentNumber: startNumber });
+                console.log('📈 Player joined:', interaction.user.tag, 'Total:', players.size);
                 await interaction.reply({ content: '✅ You joined HILO! Good luck! 🍀', ephemeral: true });
                 await updatePlayersEmbed();
             } else {
@@ -1008,6 +1014,7 @@ if (cmd === 'hilo') {
         if (interaction.customId === 'hilo_leave') {
             if (players.has(interaction.user.id)) {
                 players.delete(interaction.user.id);
+                console.log('📈 Player left:', interaction.user.tag, 'Total:', players.size);
                 await interaction.reply({ content: '🚪 You left HILO!', ephemeral: true });
                 await updatePlayersEmbed();
             } else {
