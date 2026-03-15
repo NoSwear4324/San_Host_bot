@@ -501,6 +501,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     // === TIC-TAC-TOE ===
     if (cmd === 'ttt') {
+        console.log('TTT command triggered by', message.author.tag);
         const opponent = message.mentions.users.first();
         if (!opponent || opponent.bot) {
             return message.reply('❌ Mention a valid user to play against (not a bot)');
