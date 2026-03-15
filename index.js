@@ -553,65 +553,85 @@ client.on(Events.MessageCreate, async (message) => {
             }
         }
 
-        // 🔥 Unix timestamp для Discord (в секундах)
-        const startTime = Math.floor(Date.now() / 1000) + timeSeconds;
+        const startTime = Math.floor(Date.now() / 1000) + timeSeconds; // 🔥 Unix timestamp
         
         const embed = new EmbedBuilder()
             .setColor(0xFF4500)
             .setTitle('⚔️ Battle Royale')
             .setDescription('**Join the fight, gear up, and pray for good RNG!**\nEach round brings kills, chaos, items, or miracles. Outlive everyone else to claim victory!')
             .addFields(
-                { name: '👥 Participants', value: `**1** / ∞\n<@${message.author.id}>`, inline: false },
-                { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true }, // 🔥 Dynamic Timestamp
+                { name: '👥 Participants', value: '**0** / ∞\n*No one has joined yet*', inline: false },
+                { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true }, // 🔥 Dynamic timestamp
                 { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
             )
-            .setFooter({ text: 'Click "Join Battle" to participate!' })
+            .setFooter({ text: 'Click "Join" or "Leave" before battle starts!' })
             .setTimestamp(startTime * 1000);
 
+        // 🔘 Две кнопки: Join + Leave (только до начала битвы)
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('battle_join')
                     .setLabel('Join Battle')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('⚔️')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('⚔️'),
+                new ButtonBuilder()
+                    .setCustomId('battle_leave')
+                    .setLabel('Leave')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('🚪')
             );
 
         const msg = await message.channel.send({ embeds: [embed], components: [row] });
 
         const participants = new Map();
-        participants.set(message.author.id, { hp: 100, maxHp: 100, attack: 10, item: 'None' });
+        // ⚠️ Создатель НЕ входит автоматически!
 
-        // Функция обновления списка участников
         async function updateParticipantsEmbed() {
             const participantList = Array.from(participants.entries())
                 .map(([id, data]) => `• <@${id}> ❤️ ${data.hp}/${data.maxHp}`)
-                .join('\n') || 'None';
+                .join('\n') || '*No one has joined yet*';
             
-            const newEmbed = EmbedBuilder.from(embed.toJSON())
-                .setFields(
-                    { name: '👥 Participants', value: `**${participants.size}** / ∞\n${participantList || 'Waiting...'}`, inline: false },
+            const newEmbed = EmbedBuilder.from(embed.toJSON())                .setFields(
+                    { name: '👥 Participants', value: `**${participants.size}** / ∞\n${participantList}`, inline: false },
                     { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
-                    { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }                );
+                    { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
+                );
             try { await msg.edit({ embeds: [newEmbed] }); } catch (e) {}
         }
 
         const collector = msg.createMessageComponentCollector({
-            filter: i => i.customId === 'battle_join' && !i.user.bot,
+            filter: i => ['battle_join', 'battle_leave'].includes(i.customId) && !i.user.bot,
             time: timeSeconds * 1000
         });
 
         collector.on('collect', async (interaction) => {
-            if (!participants.has(interaction.user.id)) {
-                participants.set(interaction.user.id, { hp: 100, maxHp: 100, attack: 10, item: 'None' });
-                await interaction.reply({ content: '✅ You joined the battle! Good luck! 🍀', ephemeral: true });
-                await updateParticipantsEmbed();
-            } else {
-                await interaction.reply({ content: '⚠️ You are already in this battle!', ephemeral: true });
+            // ⚔️ ВОЙТИ
+            if (interaction.customId === 'battle_join') {
+                if (!participants.has(interaction.user.id)) {
+                    participants.set(interaction.user.id, { hp: 100, maxHp: 100, attack: 10, item: 'None' });
+                    await interaction.reply({ content: '✅ You joined the battle! Good luck! 🍀', ephemeral: true });
+                    await updateParticipantsEmbed();
+                } else {
+                    await interaction.reply({ content: '⚠️ You are already in this battle!', ephemeral: true });
+                }
+                return;
+            }
+
+            // 🚪 ВЫЙТИ (только до начала битвы!)
+            if (interaction.customId === 'battle_leave') {
+                if (participants.has(interaction.user.id)) {
+                    participants.delete(interaction.user.id);
+                    await interaction.reply({ content: '🚪 You left the battle!', ephemeral: true });
+                    await updateParticipantsEmbed();
+                } else {
+                    await interaction.reply({ content: '❌ You are not in this battle!', ephemeral: true });
+                }
+                return;
             }
         });
 
-        collector.on('end', async () => {
+        collector.on('end', async (collected, reason) => {
             if (participants.size < 2) {
                 return msg.edit({ 
                     embeds: [new EmbedBuilder()
@@ -622,7 +642,6 @@ client.on(Events.MessageCreate, async (message) => {
                     components: [] 
                 });
             }
-
             const participantsArray = Array.from(participants.entries()).map(([userId, data]) => ({
                 userId,
                 hp: data.hp,
@@ -641,7 +660,8 @@ client.on(Events.MessageCreate, async (message) => {
                 winner: null
             });
 
-            const aliveSet = new Set(participants.keys());            activeBattles.set(msg.id, {
+            const aliveSet = new Set(participants.keys());
+            activeBattles.set(msg.id, {
                 _id: msg.id,
                 host: message.author.id,
                 participants,
@@ -650,16 +670,16 @@ client.on(Events.MessageCreate, async (message) => {
                 winner: null
             });
 
-            // Стартовый экран
+            // Стартовый экран - БЕЗ кнопок (выйти нельзя!)
             const startEmbed = new EmbedBuilder()
                 .setColor(0xFF4500)
                 .setTitle('⚔️ Battle Started!')
                 .setDescription(`**${participants.size} fighters entered the arena!**\n\n${Array.from(participants.keys()).map(id => `🗡️ <@${id}>`).join('\n')}`)
                 .addFields({ name: '📊 Starting HP', value: Array.from(participants.keys()).map(id => `• <@${id}>: ❤️ 100/100`).join('\n') })
-                .setFooter({ text: 'Round 1 beginning...' })
+                .setFooter({ text: 'No leaving allowed - fight to the end!' })
                 .setTimestamp(startTime * 1000);
 
-            await msg.edit({ embeds: [startEmbed], components: [] });
+            await msg.edit({ embeds: [startEmbed], components: [] }); // ❌ components: [] = нет кнопок
             
             setTimeout(() => startBattleRound(msg, activeBattles.get(msg.id)), 3000);
         });
@@ -842,9 +862,15 @@ async function startBattleRound(message, battle) {
         const embed = new EmbedBuilder()
             .setColor(0x00FF00)
             .setTitle('⚔️ Battle - Game Over!')
-            .setDescription(`🏆 **<@${battle.winner}>** wins the battle!\n\nFinal Stats:\n❤️ HP: ${winnerData.hp}/${winnerData.maxHp}\n⚔️ Attack: ${winnerData.attack}`)
+            .setDescription(`🏆 Winner: **${winnerData.hp} HP** remaining!\n\nFinal Stats:\n❤️ HP: ${winnerData.hp}/${winnerData.maxHp}\n⚔️ Attack: ${winnerData.attack}`)
             .setTimestamp();
-        return message.edit({ embeds: [embed], components: [] });
+        
+        // 🔥 ПИНГ ПОБЕДИТЕЛЯ В CONTENT (внешний текст сообщения)
+        return message.edit({ 
+            content: `🎉 **<@${battle.winner}>** WINS THE BATTLE!`, 
+            embeds: [embed], 
+            components: [] 
+        });
     }
 
     if (aliveArray.length === 0) {
@@ -929,7 +955,8 @@ async function startBattleRound(message, battle) {
         .setFooter({ text: battle.alive.size > 1 ? 'Next round in 5 seconds...' : 'Determining winner...' })
         .setTimestamp();
 
-    await message.edit({ embeds: [embed] });
+    // ❌ components: [] = НИКАКИХ кнопок во время битвы (выйти нельзя)
+    await message.edit({ embeds: [embed], components: [] });
 
     if (battle.alive.size > 1) {
         setTimeout(() => startBattleRound(message, battle), 5000);
