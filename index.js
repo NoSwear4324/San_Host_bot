@@ -455,7 +455,7 @@ client.on(Events.MessageCreate, async (message) => {
 
         return message.reply({ embeds: [embed] });
     }
-
+    //
     // === HELP ===
     if (cmd === 'help') {
         const embed = new EmbedBuilder()
