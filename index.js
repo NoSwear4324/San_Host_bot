@@ -609,7 +609,7 @@ client.on(Events.MessageCreate, async (message) => {
                     })),
                     { name: '\u200b', value: '\u200b', inline: true },
                     { name: '📊 Statistics', value: '`-status [@user]` — View host statistics\n`-toprating` — Top hosts by rating', inline: false },
-                    { name: '🎮 Games', value: '`-ttt @user` — Tic-Tac-Toe\n`-battle [time]` — Battle Royale\n`-hilo [time]` — HILO\n`-wordbomb [time]` — Word Bomb', inline: false },
+                    { name: '🎮 Games', value: '`-ttt @user` — Tic-Tac-Toe\n`-battle [time]` — Battle Royale\n`-hilo [time]` — HILO\n`', inline: false },
                     { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count', inline: false },
                     { name: '❓ Help', value: '`-help` — Show this message', inline: false }
                 )
