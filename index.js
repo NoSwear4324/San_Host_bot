@@ -1551,7 +1551,7 @@ async function startBattleRound(message, battle) {
             round: battle.round,
             alive: Array.from(battle.alive).map(id => ({ userId: id }))
         }).catch(console.error);
-
+        
         // ✅ Формируем список живых
         const aliveList = Array.from(battle.alive)
             .map(id => {
