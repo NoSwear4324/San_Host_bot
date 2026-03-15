@@ -40,35 +40,15 @@ const eventSchema = new mongoose.Schema({
     robux: Number,
     likes: { type: Number, default: 0 },
     dislikes: { type: Number, default: 0 },
-    voters: [{ userId: String, vote: String }],
+    voters: [{ userId: String, vote: { type: String, enum: ['like', 'dislike'] } }],
     active: { type: Boolean, default: true }
 }, { timestamps: true });
-
-// Схемы для игр (добавлен TTL - удаление через 24 часа для чистоты БД)
-const gameOptions = { timestamps: true, expires: 86400 }; 
-
-const TicTacToe = mongoose.model('TicTacToe', new mongoose.Schema({
-    messageId: String,
-    playerX: String,
-    playerO: String,
-    currentTurn: String,
-    board: [String],
-    active: { type: Boolean, default: true }
-}, gameOptions));
-
-const Battle = mongoose.model('Battle', new mongoose.Schema({
-    messageId: String,
-    host: String,
-    participants: Array,
-    alive: [String],
-    active: { type: Boolean, default: true }
-}, gameOptions));
 
 const HostStats = mongoose.model('HostStats', hostStatsSchema);
 const Event = mongoose.model('Event', eventSchema);
 
 // ────────────────────────────────────────────────
-// Client Setup
+// Client & Config
 // ────────────────────────────────────────────────
 const client = new Client({
     intents: [
@@ -83,44 +63,137 @@ const client = new Client({
 const EVENT_TYPES = {
     community: { name: 'Community', min: 5, max: 25, channelId: '1475487079164149913' },
     plus: { name: 'Plus', min: 25, max: 99, channelId: '1475486974252023872' },
-    super: { name: 'Super', min: 100, max: 499, channelId: '1475486893859930263' }
-    // ... добавь остальные из своего списка
+    super: { name: 'Super', min: 100, max: 499, channelId: '1475486893859930263' },
+    ultra: { name: 'Ultra', min: 500, max: 999, channelId: '1475486697876754593' },
+    ultimate: { name: 'Ultimate', min: 1000, max: 1999, channelId: '1475486579664617472' },
+    extreme: { name: 'Extreme', min: 2000, max: 4999, channelId: '1475486418972184640' },
+    godly: { name: 'Godly', min: 5000, max: 10000, channelId: '1475485770235117658' }
 };
 
 const ADMIN_ROLES = ['1475552294203424880']; 
 
-// Кэш для активных процессов
+// Хранилище активных игр в памяти
 const activeGames = new Collection();
 
 // ────────────────────────────────────────────────
-// Logic Helpers
+// Helpers
 // ────────────────────────────────────────────────
 function getBadge(likes, dislikes) {
     const total = likes + dislikes;
     if (total === 0) return { text: 'No ratings', color: 0x2F3136, percent: 0 };
     const percent = Math.round((likes / total) * 100);
     if (percent >= 90) return { text: '🏆 Diamond', color: 0xB9F2FF, percent };
+    if (percent >= 80) return { text: '🥇 Gold', color: 0xFFD700, percent };
     return { text: '🥉 Bronze', color: 0xCD7F32, percent };
 }
 
-// ────────────────────────────────────────────────
-// Main Events
-// ────────────────────────────────────────────────
-client.once(Events.ClientReady, () => {
-    console.log(`🤖 Logged in as ${client.user.tag}`);
-    client.user.setActivity('-help | Events', { type: ActivityType.Watching });
-});
+async function updateEventEmbed(message, eventData) {
+    const { text, color, percent } = getBadge(eventData.likes, eventData.dislikes);
+    const embed = new EmbedBuilder()
+        .setColor(color)
+        .setTitle(`🎮 ${EVENT_TYPES[eventData.type]?.name} Event`)
+        .setDescription(`<@${eventData.host}> is hosting for **${eventData.robux} R$**`)
+        .addFields(
+            { name: '👍 Likes', value: `${eventData.likes}`, inline: true },
+            { name: '👎 Dislikes', value: `${eventData.dislikes}`, inline: true },
+            { name: '⭐ Rating', value: `${percent}% (${text})`, inline: true }
+        )
+        .setTimestamp();
+    
+    await message.edit({ embeds: [embed] });
+}
 
+// ────────────────────────────────────────────────
+// Battle Logic
+// ────────────────────────────────────────────────
+async function runBattle(message, gameData) {
+    const players = Array.from(gameData.participants).map(id => ({ id, hp: 100 }));
+    let log = "The battle has begun!";
+
+    const interval = setInterval(async () => {
+        if (players.filter(p => p.hp > 0).length <= 1) {
+            clearInterval(interval);
+            const winner = players.find(p => p.hp > 0);
+            const finalEmbed = new EmbedBuilder()
+                .setTitle("⚔️ Battle Results")
+                .setDescription(winner ? `🏆 <@${winner.id}> is the winner!` : "💀 No survivors...")
+                .setColor(0x00FF00);
+            return message.edit({ content: "🔚 Battle Ended", embeds: [finalEmbed], components: [] });
+        }
+
+        const alive = players.filter(p => p.hp > 0);
+        const attacker = alive[Math.floor(Math.random() * alive.length)];
+        let target;
+        do {
+            target = alive[Math.floor(Math.random() * alive.length)];
+        } while (target.id === attacker.id && alive.length > 1);
+
+        const dmg = Math.floor(Math.random() * 30) + 10;
+        target.hp -= dmg;
+        log = `⚔️ <@${attacker.id}> dealt **${dmg} DMG** to <@${target.id}>!`;
+        if (target.hp <= 0) log += `\n💀 <@${target.id}> was eliminated!`;
+
+        const battleEmbed = new EmbedBuilder()
+            .setTitle("⚔️ Battle in Progress")
+            .setDescription(log)
+            .addFields(players.map(p => ({
+                name: `Player`,
+                value: `<@${p.id}>: ${p.hp > 0 ? `❤️ ${p.hp} HP` : '💀 Dead'}`,
+                inline: true
+            })))
+            .setColor(0xFF4500);
+
+        await message.edit({ embeds: [battleEmbed] });
+    }, 3000);
+}
+
+// ────────────────────────────────────────────────
+// Tic-Tac-Toe Logic
+// ────────────────────────────────────────────────
+function checkTTTWinner(board) {
+    const lines = [
+        [0,1,2], [3,4,5], [6,7,8], // rows
+        [0,3,6], [1,4,7], [2,5,8], // cols
+        [0,4,8], [2,4,6]           // diag
+    ];
+    for (const [a, b, c] of lines) {
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+    }
+    return board.includes(null) ? null : 'draw';
+}
+
+function getTTTButtons(board) {
+    const rows = [];
+    for (let i = 0; i < 3; i++) {
+        const row = new ActionRowBuilder();
+        for (let j = 0; j < 3; j++) {
+            const idx = i * 3 + j;
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`ttt_move_${idx}`)
+                    .setLabel(board[idx] || ' ')
+                    .setStyle(board[idx] === 'X' ? ButtonStyle.Primary : board[idx] === 'O' ? ButtonStyle.Danger : ButtonStyle.Secondary)
+                    .setDisabled(board[idx] !== null)
+            );
+        }
+        rows.push(row);
+    }
+    return rows;
+}
+
+// ────────────────────────────────────────────────
+// Commands Handler
+// ────────────────────────────────────────────────
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot || !message.content.startsWith('-')) return;
 
     const args = message.content.slice(1).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
 
-    // Команда создания ивента (динамическая)
+    // 1. Event Creation
     if (EVENT_TYPES[cmd]) {
         const cfg = EVENT_TYPES[cmd];
-        if (message.channel.id !== cfg.channelId) return message.reply(`❌ Only in <#${cfg.channelId}>`);
+        if (message.channel.id !== cfg.channelId) return;
 
         let robux = parseInt(args[0]) || cfg.min;
         if (robux < cfg.min || robux > cfg.max) return message.reply(`❌ Range: ${cfg.min}-${cfg.max}`);
@@ -128,8 +201,12 @@ client.on(Events.MessageCreate, async (message) => {
         const embed = new EmbedBuilder()
             .setTitle(`🎮 ${cfg.name} Event`)
             .setDescription(`<@${message.author.id}> is hosting for **${robux} R$**`)
-            .setColor(0x00FF00)
-            .setFooter({ text: 'React with 👍 or 👎' });
+            .addFields(
+                { name: '👍 Likes', value: '0', inline: true },
+                { name: '👎 Dislikes', value: '0', inline: true },
+                { name: '⭐ Rating', value: '0% (No ratings)', inline: true }
+            )
+            .setColor(0x5865F2);
 
         const msg = await message.channel.send({ embeds: [embed] });
         await msg.react('👍');
@@ -142,7 +219,7 @@ client.on(Events.MessageCreate, async (message) => {
             type: cmd,
             robux: robux
         });
-        
+
         await HostStats.findOneAndUpdate(
             { userId: message.author.id },
             { $inc: { eventsHosted: 1, totalRobux: robux, [`byType.${cmd}`]: 1 } },
@@ -150,14 +227,14 @@ client.on(Events.MessageCreate, async (message) => {
         );
     }
 
-    // Команда Battle
+    // 2. Battle Command
     if (cmd === 'battle') {
         const time = parseInt(args[0]) || 30;
         const startTime = Math.floor(Date.now() / 1000) + time;
 
         const embed = new EmbedBuilder()
             .setTitle('⚔️ Battle Royale')
-            .setDescription(`Starts <t:${startTime}:R>! Click the button to join.`)
+            .setDescription(`Join now! Starts <t:${startTime}:R>`)
             .setColor(0xFF4500);
 
         const row = new ActionRowBuilder().addComponents(
@@ -166,59 +243,117 @@ client.on(Events.MessageCreate, async (message) => {
         );
 
         const msg = await message.channel.send({ embeds: [embed], components: [row] });
-        
-        // Создаем временный объект в памяти для сбора участников
-        activeGames.set(msg.id, { participants: new Set(), status: 'waiting' });
+        activeGames.set(msg.id, { type: 'battle', participants: new Set() });
 
         setTimeout(async () => {
             const game = activeGames.get(msg.id);
             if (!game || game.participants.size < 2) {
-                activeGames.delete(msg.id);
-                return msg.edit({ content: '❌ Battle cancelled: Not enough players.', components: [] });
+                return msg.edit({ content: "❌ Battle cancelled (min 2 players)", components: [] });
             }
-            // Здесь должна быть логика раундов (round logic)
-            msg.edit({ content: '⚔️ **The Battle has begun!**', components: [] });
+            runBattle(msg, game);
         }, time * 1000);
+    }
+
+    // 3. Tic-Tac-Toe Command
+    if (cmd === 'ttt') {
+        const opponent = message.mentions.users.first();
+        if (!opponent || opponent.bot || opponent.id === message.author.id) return message.reply("❌ Mention a valid opponent!");
+
+        const embed = new EmbedBuilder()
+            .setTitle("⭕ Tic-Tac-Toe")
+            .setDescription(`<@${message.author.id}> (X) vs <@${opponent.id}> (O)\n\nIt's <@${message.author.id}>'s turn!`)
+            .setColor(0x5865F2);
+
+        const board = Array(9).fill(null);
+        const msg = await message.channel.send({ 
+            embeds: [embed], 
+            components: getTTTButtons(board) 
+        });
+
+        activeGames.set(msg.id, {
+            type: 'ttt',
+            players: { X: message.author.id, O: opponent.id },
+            board,
+            turn: 'X'
+        });
     }
 });
 
 // ────────────────────────────────────────────────
-// Interaction Handler (Кнопки)
+// Global Interaction Handler
 // ────────────────────────────────────────────────
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isButton()) return;
 
-    // Логика кнопок Battle
-    if (interaction.customId.startsWith('battle_')) {
-        const game = activeGames.get(interaction.message.id);
-        if (!game) return interaction.reply({ content: 'Event expired.', ephemeral: true });
+    const game = activeGames.get(interaction.message.id);
+    if (!game) return;
 
+    // BATTLE BUTTONS
+    if (interaction.customId.startsWith('battle_')) {
         if (interaction.customId === 'battle_join') {
             game.participants.add(interaction.user.id);
-            await interaction.reply({ content: '✅ Joined!', ephemeral: true });
+            await interaction.reply({ content: "✅ You joined!", ephemeral: true });
         } else {
             game.participants.delete(interaction.user.id);
-            await interaction.reply({ content: '🚪 Left.', ephemeral: true });
+            await interaction.reply({ content: "🚪 You left.", ephemeral: true });
         }
     }
 
-    // Логика реакций (рейтинг) — лучше использовать MessageReactionAdd, 
-    // но для кнопок оставляем этот блок.
+    // TTT BUTTONS
+    if (interaction.customId.startsWith('ttt_move_')) {
+        if (interaction.user.id !== game.players[game.turn]) {
+            return interaction.reply({ content: "❌ Not your turn!", ephemeral: true });
+        }
+
+        const idx = parseInt(interaction.customId.split('_')[2]);
+        game.board[idx] = game.turn;
+        
+        const winner = checkTTTWinner(game.board);
+        if (winner) {
+            const resEmbed = new EmbedBuilder()
+                .setTitle("⭕ Game Over")
+                .setDescription(winner === 'draw' ? "It's a draw!" : `🏆 <@${game.players[winner]}> won!`)
+                .setColor(0x00FF00);
+            activeGames.delete(interaction.message.id);
+            return interaction.update({ embeds: [resEmbed], components: getTTTButtons(game.board) });
+        }
+
+        game.turn = game.turn === 'X' ? 'O' : 'X';
+        const nextEmbed = new EmbedBuilder()
+            .setTitle("⭕ Tic-Tac-Toe")
+            .setDescription(`Current Turn: <@${game.players[game.turn]}> (${game.turn})`)
+            .setColor(0x5865F2);
+        
+        await interaction.update({ embeds: [nextEmbed], components: getTTTButtons(game.board) });
+    }
 });
 
-// Обработка 👍 / 👎 через реакции
+// ────────────────────────────────────────────────
+// Reaction Rating Handler
+// ────────────────────────────────────────────────
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
     if (user.bot) return;
     if (reaction.partial) await reaction.fetch();
 
-    const event = await Event.findOne({ messageId: reaction.message.id, active: true });
-    if (!event) return;
+    const eventData = await Event.findOne({ messageId: reaction.message.id, active: true });
+    if (!eventData) return;
 
-    if (reaction.emoji.name === '👍') event.likes++;
-    if (reaction.emoji.name === '👎') event.dislikes++;
+    // Убираем старый голос, если он был
+    const existingVote = eventData.voters.find(v => v.userId === user.id);
+    if (existingVote) return; // Простая защита: один голос за всё время
+
+    if (reaction.emoji.name === '👍') eventData.likes++;
+    if (reaction.emoji.name === '👎') eventData.dislikes++;
     
-    await event.save();
-    // Тут можно добавить updateEventEmbed() для обновления текста в реальном времени
+    eventData.voters.push({ userId: user.id, vote: reaction.emoji.name === '👍' ? 'like' : 'dislike' });
+    await eventData.save();
+    
+    await updateEventEmbed(reaction.message, eventData);
 });
 
-client.login(process.env.TOKEN);
+client.once(Events.ClientReady, () => {
+    console.log(`🤖 Logged in as ${client.user.tag}`);
+    client.user.setActivity('-help | Events & Games', { type: ActivityType.Watching });
+});
+
+client.login(process.env.DISCORD_TOKEN);
