@@ -475,6 +475,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     // === HELP ===
     if (cmd === 'help') {
+        console.log('Help command triggered');
         const embed = new EmbedBuilder()
             .setColor(0x5865F2)
             .setTitle('📜 Commands')
@@ -618,6 +619,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     // === BATTLE ===
     if (cmd === 'battle') {
+        console.log('Battle command triggered by', message.author.tag);
         let timeSeconds = 30;
         if (args[0]) {
             const parsed = parseInt(args[0]);
