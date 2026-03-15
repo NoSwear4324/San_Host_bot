@@ -148,6 +148,22 @@ const BATTLE_ITEMS = [
 ];
 
 // ────────────────────────────────────────────────
+// Word Bomb Themes
+// ────────────────────────────────────────────────
+const WORD_BOMB_THEMES = [
+    { name: 'FOOD', examples: ['Pizza', 'Burger', 'Pasta'] },
+    { name: 'ANIMALS', examples: ['Dog', 'Cat', 'Elephant'] },
+    { name: 'CITIES', examples: ['London', 'Paris', 'Tokyo'] },
+    { name: 'COLORS', examples: ['Red', 'Blue', 'Green'] },
+    { name: 'SPORTS', examples: ['Football', 'Tennis', 'Golf'] },
+    { name: 'JOBS', examples: ['Doctor', 'Teacher', 'Chef'] },
+    { name: 'BODY PARTS', examples: ['Hand', 'Foot', 'Eye'] },
+    { name: 'VEHICLES', examples: ['Car', 'Bus', 'Train'] },
+    { name: 'COUNTRIES', examples: ['USA', 'China', 'Brazil'] },
+    { name: 'MOVIES', examples: ['Titanic', 'Avatar', 'Joker'] }
+];
+
+// ────────────────────────────────────────────────
 // Helper Functions
 // ────────────────────────────────────────────────
 async function getStats(userId) {
