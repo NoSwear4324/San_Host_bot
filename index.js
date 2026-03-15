@@ -8,10 +8,10 @@ const mongoose = require('mongoose');
 async function connectWithRetry() {
     try {
         await mongoose.connect(process.env.MONGO_URL, {
-            serverSelectionTimeoutMS: 10000,
-            socketTimeoutMS: 45000,
-            maxPoolSize: 10,
-            minPoolSize: 2,
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 30000,
+            maxPoolSize: 20,
+            minPoolSize: 5,
             retryWrites: true,
             w: 'majority'
         });
