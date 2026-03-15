@@ -2221,34 +2221,45 @@ client.on(Events.MessageCreate, async (message) => {
     if (message.content.startsWith('-')) return;
 
     try {
+        if (activeWordBombs.size === 0) return;
+
         for (const [msgId, game] of activeWordBombs.entries()) {
             if (!game?.active) continue;
-            if (game.players.has(message.author.id) && game.currentTurn === message.author.id) {
-                const word = message.content.trim();
+            
+            // Проверяем что игрок в игре и сейчас его ход
+            if (!game.players.has(message.author.id)) continue;
+            if (game.currentTurn !== message.author.id) continue;
+            
+            const word = message.content.trim();
 
-                if (word.length > 0) {
-                    if (game.timer) {
-                        clearTimeout(game.timer);
-                        game.timer = null;
-                    }
-
-                    await handleWordBombWord(message, game, message.author.id, word);
-
-                    try {
-                        if (message.deletable) {
-                            await message.delete();
-                        }
-                    } catch (e) {}
-
-                    if (game.players.size > 1 && game.active) {
-                        setTimeout(() => {
-                            const freshGame = activeWordBombs.get(msgId);
-                            if (freshGame?.active) startWordBombRound(message, freshGame);
-                        }, 2000);
-                    }
+            if (word.length > 0) {
+                console.log('💣 Word Bomb word:', word, 'by', message.author.tag);
+                
+                if (game.timer) {
+                    clearTimeout(game.timer);
+                    game.timer = null;
                 }
-                break;
+
+                const result = await handleWordBombWord(message, game, message.author.id, word);
+                
+                if (result) {
+                    console.log('✅ Word accepted');
+                }
+
+                try {
+                    if (message.deletable) {
+                        await message.delete();
+                    }
+                } catch (e) {}
+
+                if (game.players.size > 1 && game.active) {
+                    setTimeout(() => {
+                        const freshGame = activeWordBombs.get(msgId);
+                        if (freshGame?.active) startWordBombRound(message, freshGame);
+                    }, 2000);
+                }
             }
+            break;
         }
     } catch (err) {
         console.error('Error in Word Bomb MessageCreate:', err.message);
