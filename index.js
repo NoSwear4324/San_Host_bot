@@ -739,151 +739,179 @@ client.on(Events.MessageCreate, async (message) => {
         }
 
         // === BATTLE ===
-        if (cmd === 'battle') {
-            let timeSeconds = 30;
-            if (args[0]) {
-                const parsed = parseInt(args[0]);
-                if (!isNaN(parsed) && parsed >= 10 && parsed <= 300) {
-                    timeSeconds = parsed;
-                }
+        // ────────────────────────────────────────────────
+// BATTLE COMMAND 🔥 FIX — Вход работает
+// ────────────────────────────────────────────────
+if (cmd === 'battle') {
+    let timeSeconds = 30;
+    if (args[0]) {
+        const parsed = parseInt(args[0]);
+        if (!isNaN(parsed) && parsed >= 10 && parsed <= 300) {
+            timeSeconds = parsed;
+        }
+    }
+
+    const startTime = Math.floor(Date.now() / 1000) + timeSeconds;
+    
+    const embed = new EmbedBuilder()
+        .setColor(0xFF4500)
+        .setTitle('⚔️ Battle Royale')
+        .setDescription('**Join the fight, gear up, and pray for good RNG!**\nEach round brings kills, chaos, items, or miracles. Outlive everyone else to claim victory!')
+        .addFields(
+            { name: '👥 Participants', value: '**0** / ∞\n*No one has joined yet*', inline: false },
+            { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+            { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
+        )
+        .setFooter({ text: 'Click "Join" or "Leave" before battle starts!' })
+        .setTimestamp(startTime * 1000);
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('battle_join')
+                .setLabel('Join Battle')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('⚔️'),
+            new ButtonBuilder()
+                .setCustomId('battle_leave')
+                .setLabel('Leave')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('🚪')
+        );
+
+    const msg = await message.channel.send({ embeds: [embed], components: [row] });
+
+    const participants = new Map();
+
+    async function updateParticipantsEmbed() {
+        const participantList = Array.from(participants.entries())
+            .map(([id, data]) => `• <@${id}> ❤️ ${data.hp}/${data.maxHp}`)
+            .join('\n') || '*No one has joined yet*';
+        
+        const newEmbed = EmbedBuilder.from(embed.toJSON())
+            .setFields(
+                { name: '👥 Participants', value: `**${participants.size}** / ∞\n${participantList}`, inline: false },
+                { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+                { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
+            );
+        try { await msg.edit({ embeds: [newEmbed] }); } catch (e) {}
+    }
+
+    const collector = msg.createMessageComponentCollector({
+        filter: i => ['battle_join', 'battle_leave'].includes(i.customId) && !i.user.bot,
+        time: timeSeconds * 1000
+    });
+
+    collector.on('collect', async (interaction) => {
+        if (interaction.customId === 'battle_join') {
+            if (!participants.has(interaction.user.id)) {
+                participants.set(interaction.user.id, { hp: 100, maxHp: 100, attack: 10, item: 'None' });
+                await interaction.reply({ content: '✅ You joined the battle! Good luck! 🍀', ephemeral: true });
+                await updateParticipantsEmbed();
+            } else {
+                await interaction.reply({ content: '⚠️ You are already in this battle!', ephemeral: true });
             }
-
-            const startTime = Math.floor(Date.now() / 1000) + timeSeconds;
-            
-            const embed = new EmbedBuilder()
-                .setColor(0xFF4500)
-                .setTitle('⚔️ Battle Royale')
-                .setDescription('**Join the fight, gear up, and pray for good RNG!**\nEach round brings kills, chaos, items, or miracles. Outlive everyone else to claim victory!')
-                .addFields(
-                    { name: '👥 Participants', value: '**0** / ∞\n*No one has joined yet*', inline: false },
-                    { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
-                    { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
-                )
-                .setFooter({ text: 'Click "Join" or "Leave" before battle starts!' })
-                .setTimestamp(startTime * 1000);
-
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('battle_join')
-                        .setLabel('Join Battle')
-                        .setStyle(ButtonStyle.Success)
-                        .setEmoji('⚔️'),
-                    new ButtonBuilder()
-                        .setCustomId('battle_leave')
-                        .setLabel('Leave')
-                        .setStyle(ButtonStyle.Secondary)
-                        .setEmoji('🚪')
-                );
-
-            const msg = await message.channel.send({ embeds: [embed], components: [row] });
-
-            const participants = new Map();
-
-            async function updateParticipantsEmbed() {
-                const participantList = Array.from(participants.entries())
-                    .map(([id, data]) => `• <@${id}> ❤️ ${data.hp}/${data.maxHp}`)
-                    .join('\n') || '*No one has joined yet*';
-                
-                const newEmbed = EmbedBuilder.from(embed.toJSON())
-                    .setFields(
-                        { name: '👥 Participants', value: `**${participants.size}** / ∞\n${participantList}`, inline: false },
-                        { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
-                        { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
-                    );
-                try { await msg.edit({ embeds: [newEmbed] }); } catch (e) {}
-            }
-
-            const collector = msg.createMessageComponentCollector({
-                filter: i => ['battle_join', 'battle_leave'].includes(i.customId) && !i.user.bot,
-                time: timeSeconds * 1000
-            });
-
-            collector.on('collect', async (interaction) => {
-                if (interaction.customId === 'battle_join') {
-                    if (!participants.has(interaction.user.id)) {
-                        participants.set(interaction.user.id, { hp: 100, maxHp: 100, attack: 10, item: 'None' });
-                        await interaction.reply({ content: '✅ You joined the battle! Good luck! 🍀', ephemeral: true });
-                        await updateParticipantsEmbed();
-                    } else {
-                        await interaction.reply({ content: '⚠️ You are already in this battle!', ephemeral: true });
-                    }
-                    return;
-                }
-
-                if (interaction.customId === 'battle_leave') {
-                    if (participants.has(interaction.user.id)) {
-                        participants.delete(interaction.user.id);
-                        await interaction.reply({ content: '🚪 You left the battle!', ephemeral: true });
-                        await updateParticipantsEmbed();
-                    } else {
-                        await interaction.reply({ content: '❌ You are not in this battle!', ephemeral: true });
-                    }
-                    return;
-                }
-            });
-
-            collector.on('end', async (collected, reason) => {
-                if (participants.size < 2) {
-                    return msg.edit({ 
-                        embeds: [new EmbedBuilder()
-                            .setColor(0xFF4500)
-                            .setTitle('❌ Battle Cancelled')
-                            .setDescription(`Not enough participants (need at least 2, got **${participants.size}**)\nBetter luck next time! 🍀`)
-                        ], 
-                        components: [] 
-                    });
-                }
-
-                const participantsArray = Array.from(participants.entries()).map(([userId, data]) => ({
-                    userId,
-                    hp: data.hp,
-                    maxHp: data.maxHp,
-                    attack: data.attack,
-                    item: data.item
-                }));
-
-                await Battle.create({
-                    messageId: msg.id,
-                    channelId: msg.channel.id,
-                    host: message.author.id,
-                    participants: participantsArray,
-                    round: 0,
-                    alive: participantsArray.map(p => ({ userId: p.userId })),
-                    winner: null
-                });
-
-                activeBattles.set(msg.id, {
-                    _id: msg.id,
-                    host: message.author.id,
-                    participants: new Map(participants),
-                    round: 0,
-                    alive: new Set(participants.keys()),
-                    winner: null,
-                    active: true
-                });
-
-                const startEmbed = new EmbedBuilder()
-                    .setColor(0xFF4500)
-                    .setTitle('⚔️ Battle Started!')
-                    .setDescription(`**${participants.size} fighters entered the arena!**\n\n${Array.from(participants.keys()).map(id => `🗡️ <@${id}>`).join('\n')}`)
-                    .addFields({ name: '📊 Starting HP', value: Array.from(participants.keys()).map(id => `• <@${id}>: ❤️ 100/100`).join('\n') })
-                    .setFooter({ text: 'No leaving allowed - fight to the end!' })
-                    .setTimestamp(startTime * 1000);
-
-                await msg.edit({ embeds: [startEmbed], components: [] });
-                
-                setTimeout(() => {
-                    const battle = activeBattles.get(msg.id);
-                    if (battle?.active) {
-                        console.log('🎮 Starting Battle Round 1, alive:', battle.alive.size);
-                        startBattleRound(msg, battle);
-                    }
-                }, 3000);
-            });
-
             return;
         }
+
+        if (interaction.customId === 'battle_leave') {
+            if (participants.has(interaction.user.id)) {
+                participants.delete(interaction.user.id);
+                await interaction.reply({ content: '🚪 You left the battle!', ephemeral: true });
+                await updateParticipantsEmbed();
+            } else {
+                await interaction.reply({ content: '❌ You are not in this battle!', ephemeral: true });
+            }
+            return;
+        }
+    });
+
+    collector.on('end', async (collected, reason) => {
+        console.log('🔪 Battle collector ended. Reason:', reason, 'Participants:', participants.size);
+        
+        // ✅ Проверка количества участников
+        if (participants.size < 2) {
+            console.log('❌ Battle cancelled - not enough players');
+            try {
+                await msg.edit({ 
+                    embeds: [new EmbedBuilder()
+                        .setColor(0xFF4500)
+                        .setTitle('❌ Battle Cancelled')
+                        .setDescription(`Not enough participants (need at least 2, got **${participants.size}**)\nBetter luck next time! 🍀`)
+                    ], 
+                    components: [] 
+                });
+            } catch (e) {}
+            return;
+        }
+
+        const participantsArray = Array.from(participants.entries()).map(([userId, data]) => ({
+            userId,
+            hp: data.hp,
+            maxHp: data.maxHp,
+            attack: data.attack,
+            item: data.item
+        }));
+
+        // ✅ Создаём в БД
+        try {
+            await Battle.create({
+                messageId: msg.id,
+                channelId: msg.channel.id,
+                host: message.author.id,
+                participants: participantsArray,
+                round: 0,
+                alive: participantsArray.map(p => ({ userId: p.userId })),
+                winner: null
+            });
+            console.log('✅ Battle created in database');
+        } catch (err) {
+            console.error('❌ Failed to create battle in DB:', err.message);
+            return;
+        }
+
+        // ✅ Добавляем в кэш с ПРАВИЛЬНЫМИ структурами (Map и Set)
+        activeBattles.set(msg.id, {
+            _id: msg.id,
+            host: message.author.id,
+            participants: new Map(participants),  // ✅ Map
+            round: 0,
+            alive: new Set(participants.keys()),  // ✅ Set
+            winner: null,
+            active: true
+        });
+        console.log('✅ Battle added to cache. Alive:', participants.size);
+
+        const startEmbed = new EmbedBuilder()
+            .setColor(0xFF4500)
+            .setTitle('⚔️ Battle Started!')
+            .setDescription(`**${participants.size} fighters entered the arena!**\n\n${Array.from(participants.keys()).map(id => `🗡️ <@${id}>`).join('\n')}`)
+            .addFields({ name: '📊 Starting HP', value: Array.from(participants.keys()).map(id => `• <@${id}>: ❤️ 100/100`).join('\n') })
+            .setFooter({ text: 'No leaving allowed - fight to the end!' })
+            .setTimestamp(startTime * 1000);
+
+        try {
+            await msg.edit({ embeds: [startEmbed], components: [] });
+            console.log('✅ Battle start message edited');
+        } catch (err) {
+            console.error('❌ Failed to edit start message:', err.message);
+        }
+        
+        // ✅ Запускаем первый раунд через 3 секунды
+        setTimeout(() => {
+            const battle = activeBattles.get(msg.id);
+            console.log('⏰ Timeout fired. Battle in cache:', !!battle, 'Active:', battle?.active);
+            if (battle && battle.active) {
+                console.log('🎮 Starting Battle Round 1, alive:', battle.alive.size);
+                startBattleRound(msg, battle);
+            } else {
+                console.log('❌ Battle not found or not active, skipping round 1');
+            }
+        }, 3000);
+    });
+
+    return;
+}
 
         // === HILO ===
         if (cmd === 'hilo') {
