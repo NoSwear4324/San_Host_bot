@@ -857,7 +857,7 @@ client.on(Events.MessageCreate, async (message) => {
                 active: true
             });
 
-            activeHilo.set(msg.id, {
+            activeHiLo.set(msg.id, {
                 _id: msg.id,
                 host: message.author.id,
                 players: new Map(players),
@@ -877,7 +877,7 @@ client.on(Events.MessageCreate, async (message) => {
                 components: []
             });
 
-            setTimeout(() => startHiloRound(msg, activeHilo.get(msg.id)), 3000);
+            setTimeout(() => startHiloRound(msg, activeHiLo.get(msg.id)), 3000);
         });
 
         return;
@@ -1382,7 +1382,7 @@ async function processHiloGuess(interaction, game, isHigher) {
                 });
 
                 game.active = false;
-                activeHilo.delete(interaction.message.id);
+                activeHiLo.delete(interaction.message.id);
 
                 await HiLo.findOneAndUpdate({ messageId: interaction.message.id }, { active: false });
             }, 2000);
@@ -1710,7 +1710,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     // === HILO GUESS BUTTONS ===
     if (customId === 'hilo_higher' || customId === 'hilo_lower') {
-        const game = activeHilo.get(interaction.message.id);
+        const game = activeHiLo.get(interaction.message.id);
         if (!game) return;
 
         if (game.currentTurn !== interaction.user.id) {
@@ -1814,7 +1814,7 @@ client.on(Events.MessageDelete, async (message) => {
     activeEvents.delete(message.id);
     activeTicTacToe.delete(message.id);
     activeBattles.delete(message.id);
-    activeHilo.delete(message.id);
+    activeHiLo.delete(message.id);
     activeWordBombs.delete(message.id);
     await Event.findOneAndUpdate({ messageId: message.id }, { active: false });
     await TicTacToe.findOneAndUpdate({ messageId: message.id }, { active: false });
