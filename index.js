@@ -1709,7 +1709,7 @@ async function processHiloGuess(interaction, game, isHigher) {
             console.log('⚠️ HILO not active, ignoring guess');
             return;
         }
-        
+
         const userId = interaction.user.id;
         const player = game.players.get(userId);
         const currentNumber = game.currentNumber;
@@ -1749,6 +1749,17 @@ async function processHiloGuess(interaction, game, isHigher) {
             await interaction.update({ embeds: [embed], components: [] });
 
             game.currentNumber = newNumber;
+
+            // 🔥 Передаём ход следующему игроку
+            const playerIds = Array.from(game.players.keys());
+            const currentIndex = playerIds.indexOf(userId);
+            const nextIndex = (currentIndex + 1) % playerIds.length;
+            game.currentTurn = playerIds[nextIndex];
+
+            await HiLo.findOneAndUpdate(
+                { messageId: interaction.message.id },
+                { currentTurn: game.currentTurn }
+            );
 
             setTimeout(async () => {
                 if (game.active) await startHiloRound(interaction.message, game);
