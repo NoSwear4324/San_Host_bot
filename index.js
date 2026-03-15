@@ -1844,20 +1844,27 @@ client.on(Events.MessageDelete, async (message) => {
 // ────────────────────────────────────────────────
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot || !message.guild) return;
-    
+
     // Игнорируем команды (начинаются с -)
     if (message.content.startsWith('-')) return;
 
     // Проверяем, есть ли активная Word Bomb игра
-    for (const [msgId, game] of activeWordBombs.entries()) {
-        if (game.players.has(message.author.id) && game.currentTurn === message.author.id && game.active) {
-            const word = message.content.trim();
+    if (activeWordBombs.size === 0) return;
 
-            // Проверяем, что слово не пустое
-            if (word.length > 0) {
+    for (const [msgId, game] of activeWordBombs.entries()) {
+        if (!game || !game.active) continue;
+        if (!game.players.has(message.author.id)) continue;
+        if (game.currentTurn !== message.author.id) continue;
+
+        const word = message.content.trim();
+
+        // Проверяем, что слово не пустое
+        if (word.length > 0) {
+            try {
                 // Очищаем таймер
                 if (game.timer) {
                     clearTimeout(game.timer);
+                    game.timer = null;
                 }
 
                 // Обрабатываем слово
@@ -1871,12 +1878,14 @@ client.on(Events.MessageCreate, async (message) => {
                 // Запускаем следующий раунд
                 if (game.players.size > 1 && game.active) {
                     setTimeout(() => {
-                        startWordBombRound(message, game);
+                        if (game.active) startWordBombRound(message, game);
                     }, 2000);
                 }
+            } catch (err) {
+                console.error('Word Bomb message error:', err);
             }
-            break;
         }
+        break;
     }
 });
 
