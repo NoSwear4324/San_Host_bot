@@ -2065,7 +2065,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const customId = interaction.customId;
 
     try {
-        if (['battle_join', 'battle_leave', 'hilo_join', 'hilo_leave', 'wordbomb_join', 'wordbomb_leave', 'ttt_accept', 'ttt_decline'].includes(customId)) {
+        // HILO JOIN/LEAVE - обрабатывается в коллекторе команды hilo
+        if (['hilo_join', 'hilo_leave', 'wordbomb_join', 'wordbomb_leave'].includes(customId)) {
             return interaction.deferUpdate().catch(() => {});
         }
 
