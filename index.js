@@ -553,14 +553,20 @@ client.on(Events.MessageCreate, async (message) => {
             }
         }
 
-        const endTime = Math.floor(Date.now() / 1000) + timeSeconds;
+        // 🔥 Unix timestamp для Discord (в секундах)
+        const startTime = Math.floor(Date.now() / 1000) + timeSeconds;
         
         const embed = new EmbedBuilder()
             .setColor(0xFF4500)
-            .setTitle('⚔️ Battle')
+            .setTitle('⚔️ Battle Royale')
             .setDescription('**Join the fight, gear up, and pray for good RNG!**\nEach round brings kills, chaos, items, or miracles. Outlive everyone else to claim victory!')
-            .setFooter({ text: `Battle starts in ${timeSeconds} seconds` })
-            .setTimestamp(endTime * 1000);
+            .addFields(
+                { name: '👥 Participants', value: `**1** / ∞\n<@${message.author.id}>`, inline: false },
+                { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true }, // 🔥 Dynamic Timestamp
+                { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
+            )
+            .setFooter({ text: 'Click "Join Battle" to participate!' })
+            .setTimestamp(startTime * 1000);
 
         const row = new ActionRowBuilder()
             .addComponents(
@@ -576,6 +582,20 @@ client.on(Events.MessageCreate, async (message) => {
         const participants = new Map();
         participants.set(message.author.id, { hp: 100, maxHp: 100, attack: 10, item: 'None' });
 
+        // Функция обновления списка участников
+        async function updateParticipantsEmbed() {
+            const participantList = Array.from(participants.entries())
+                .map(([id, data]) => `• <@${id}> ❤️ ${data.hp}/${data.maxHp}`)
+                .join('\n') || 'None';
+            
+            const newEmbed = EmbedBuilder.from(embed.toJSON())
+                .setFields(
+                    { name: '👥 Participants', value: `**${participants.size}** / ∞\n${participantList || 'Waiting...'}`, inline: false },
+                    { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+                    { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }                );
+            try { await msg.edit({ embeds: [newEmbed] }); } catch (e) {}
+        }
+
         const collector = msg.createMessageComponentCollector({
             filter: i => i.customId === 'battle_join' && !i.user.bot,
             time: timeSeconds * 1000
@@ -584,13 +604,23 @@ client.on(Events.MessageCreate, async (message) => {
         collector.on('collect', async (interaction) => {
             if (!participants.has(interaction.user.id)) {
                 participants.set(interaction.user.id, { hp: 100, maxHp: 100, attack: 10, item: 'None' });
-                await interaction.reply({ content: '✅ You joined the battle!', ephemeral: true });
+                await interaction.reply({ content: '✅ You joined the battle! Good luck! 🍀', ephemeral: true });
+                await updateParticipantsEmbed();
+            } else {
+                await interaction.reply({ content: '⚠️ You are already in this battle!', ephemeral: true });
             }
         });
 
         collector.on('end', async () => {
             if (participants.size < 2) {
-                return msg.edit({ embeds: [new EmbedBuilder().setColor(0xFF4500).setTitle('❌ Battle Cancelled').setDescription('Not enough participants (need at least 2)')], components: [] });
+                return msg.edit({ 
+                    embeds: [new EmbedBuilder()
+                        .setColor(0xFF4500)
+                        .setTitle('❌ Battle Cancelled')
+                        .setDescription(`Not enough participants (need at least 2, got **${participants.size}**)\nBetter luck next time! 🍀`)
+                    ], 
+                    components: [] 
+                });
             }
 
             const participantsArray = Array.from(participants.entries()).map(([userId, data]) => ({
@@ -611,8 +641,7 @@ client.on(Events.MessageCreate, async (message) => {
                 winner: null
             });
 
-            const aliveSet = new Set(participants.keys());
-            activeBattles.set(msg.id, {
+            const aliveSet = new Set(participants.keys());            activeBattles.set(msg.id, {
                 _id: msg.id,
                 host: message.author.id,
                 participants,
@@ -621,7 +650,18 @@ client.on(Events.MessageCreate, async (message) => {
                 winner: null
             });
 
-            await startBattleRound(msg, activeBattles.get(msg.id));
+            // Стартовый экран
+            const startEmbed = new EmbedBuilder()
+                .setColor(0xFF4500)
+                .setTitle('⚔️ Battle Started!')
+                .setDescription(`**${participants.size} fighters entered the arena!**\n\n${Array.from(participants.keys()).map(id => `🗡️ <@${id}>`).join('\n')}`)
+                .addFields({ name: '📊 Starting HP', value: Array.from(participants.keys()).map(id => `• <@${id}>: ❤️ 100/100`).join('\n') })
+                .setFooter({ text: 'Round 1 beginning...' })
+                .setTimestamp(startTime * 1000);
+
+            await msg.edit({ embeds: [startEmbed], components: [] });
+            
+            setTimeout(() => startBattleRound(msg, activeBattles.get(msg.id)), 3000);
         });
 
         return;
@@ -787,6 +827,7 @@ async function startBattleRound(message, battle) {
     const round = ++battle.round;
     const aliveArray = Array.from(battle.alive);
     
+    // Проверка победителя
     if (aliveArray.length === 1) {
         battle.winner = aliveArray[0];
         battle.active = false;
@@ -797,12 +838,13 @@ async function startBattleRound(message, battle) {
         });
         activeBattles.delete(message.id);
         
+        const winnerData = battle.participants.get(battle.winner);
         const embed = new EmbedBuilder()
             .setColor(0x00FF00)
             .setTitle('⚔️ Battle - Game Over!')
-            .setDescription(`🏆 **<@${battle.winner}>** wins the battle!`)
+            .setDescription(`🏆 **<@${battle.winner}>** wins the battle!\n\nFinal Stats:\n❤️ HP: ${winnerData.hp}/${winnerData.maxHp}\n⚔️ Attack: ${winnerData.attack}`)
             .setTimestamp();
-        return message.edit({ embeds: [embed] });
+        return message.edit({ embeds: [embed], components: [] });
     }
 
     if (aliveArray.length === 0) {
@@ -813,7 +855,7 @@ async function startBattleRound(message, battle) {
     }
 
     const events = [];
-    const shuffled = aliveArray.sort(() => Math.random() - 0.5);
+    const shuffled = [...aliveArray].sort(() => Math.random() - 0.5);
 
     for (const userId of shuffled) {
         if (!battle.alive.has(userId)) continue;
@@ -830,7 +872,6 @@ async function startBattleRound(message, battle) {
 
         let eventText = '';
         const rng = Math.random();
-
         if (item.heal > 0) {
             player.hp = Math.min(player.maxHp, player.hp + item.heal);
             eventText = `<@${userId}> found **${item.name}** and healed for **${item.heal} HP**! (${player.hp}/${player.maxHp})`;
@@ -868,17 +909,24 @@ async function startBattleRound(message, battle) {
         alive: Array.from(battle.alive).map(id => ({ userId: id }))
     });
 
-    const aliveList = Array.from(battle.alive).map(id => {
-        const p = battle.participants.get(id);
-        return `<@${id}> - ${p.hp}/${p.maxHp} HP`;
-    }).join('\n') || 'None';
+    // Список живых с визуальным HP-баром
+    const aliveList = Array.from(battle.alive)
+        .map(id => {
+            const p = battle.participants.get(id);
+            const hpPercent = Math.round((p.hp / p.maxHp) * 100);
+            const hpBar = '❤️'.repeat(Math.ceil(hpPercent / 20)) + '🖤'.repeat(5 - Math.ceil(hpPercent / 20));
+            return `• <@${id}> ${hpBar} ${p.hp}/${p.maxHp}`;
+        })
+        .join('\n') || 'None';
 
     const embed = new EmbedBuilder()
         .setColor(0xFF4500)
-        .setTitle(`⚔️ Battle - Round ${round}`)
-        .setDescription(events.join('\n\n') || 'Nothing happened...')
-        .addFields({ name: '📊 Alive', value: aliveList })
-        .setFooter({ text: 'Next round in 5 seconds...' })
+        .setTitle(`⚔️ Battle - Round ${round}`)        .setDescription(events.length > 0 ? events.join('\n\n') : '🤷 Nothing happened this round...')
+        .addFields(
+            { name: `📊 Alive (${battle.alive.size})`, value: aliveList },
+            { name: '💀 Eliminated', value: `${Array.from(battle.participants.keys()).length - battle.alive.size}` }
+        )
+        .setFooter({ text: battle.alive.size > 1 ? 'Next round in 5 seconds...' : 'Determining winner...' })
         .setTimestamp();
 
     await message.edit({ embeds: [embed] });
