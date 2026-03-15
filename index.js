@@ -79,24 +79,11 @@ const hiloSchema = new mongoose.Schema({
     active:       { type: Boolean, default: true }
 }, { timestamps: true });
 
-const wordBombSchema = new mongoose.Schema({
-    messageId:    { type: String, required: true, unique: true },
-    channelId:    { type: String, required: true },
-    host:         { type: String, required: true },
-    players:      [{ userId: String, bombs: { type: Number, default: 0 }, wordsGuessed: { type: Number, default: 0 } }],
-    theme:        { type: String, required: true },
-    usedWords:    [String],
-    currentTurn:  { type: String, required: true },
-    winner:       { type: String, default: null },
-    active:       { type: Boolean, default: true }
-}, { timestamps: true });
-
 const HostStats = mongoose.model('HostStats', hostStatsSchema);
 const Event = mongoose.model('Event', eventSchema);
 const TicTacToe = mongoose.model('TicTacToe', ticTacToeSchema);
 const Battle = mongoose.model('Battle', battleSchema);
 const HiLo = mongoose.model('HiLo', hiloSchema);
-const WordBomb = mongoose.model('WordBomb', wordBombSchema);
 
 // ────────────────────────────────────────────────
 // Client
@@ -140,25 +127,11 @@ const ADMIN_ROLES = ['1475552294203424880', '1475552827626619050']; // Change th
 const activeEvents = new Map();
 const activeTicTacToe = new Map();
 const activeBattles = new Map();
-const activeHilo = new Map();
-const activeWordBombs = new Map();
+const activeHiLo = new Map();
 
 // ────────────────────────────────────────────────
 // Game Constants
 // ────────────────────────────────────────────────
-const WORD_BOMB_THEMES = [
-    { name: 'FOOD', examples: ['Pizza', 'Burger', 'Pasta'] },
-    { name: 'ANIMALS', examples: ['Dog', 'Cat', 'Elephant'] },
-    { name: 'CITIES', examples: ['London', 'Paris', 'Tokyo'] },
-    { name: 'COLORS', examples: ['Red', 'Blue', 'Green'] },
-    { name: 'SPORTS', examples: ['Football', 'Tennis', 'Golf'] },
-    { name: 'JOBS', examples: ['Doctor', 'Teacher', 'Chef'] },
-    { name: 'BODY PARTS', examples: ['Hand', 'Foot', 'Eye'] },
-    { name: 'VEHICLES', examples: ['Car', 'Bus', 'Train'] },
-    { name: 'COUNTRIES', examples: ['USA', 'China', 'Brazil'] },
-    { name: 'MOVIES', examples: ['Titanic', 'Avatar', 'Joker'] }
-];
-
 const BATTLE_ITEMS = [
     { name: '🗡️ Sword', damage: 15, heal: 0 },
     { name: '🔫 Gun', damage: 20, heal: 0 },
@@ -1468,7 +1441,6 @@ async function handleWordBombTimeout(message, game) {
 
     if (!player) return;
 
-    // Игрок не успел - получает бомбу
     player.bombs++;
 
     const embed = new EmbedBuilder()
@@ -1479,7 +1451,6 @@ async function handleWordBombTimeout(message, game) {
 
     await message.edit({ embeds: [embed], components: [] });
 
-    // Проверяем выбывание
     if (player.bombs >= 3) {
         game.players.delete(currentPlayerId);
 
@@ -1493,12 +1464,9 @@ async function handleWordBombTimeout(message, game) {
 
         await WordBomb.findOneAndUpdate(
             { messageId: message.id },
-            {
-                $pull: { players: { userId: currentPlayerId } }
-            }
+            { $pull: { players: { userId: currentPlayerId } } }
         );
 
-        // Проверяем победителя
         if (game.players.size === 1) {
             const winnerId = Array.from(game.players.keys())[0];
             const winner = game.players.get(winnerId);
@@ -1524,13 +1492,11 @@ async function handleWordBombTimeout(message, game) {
             return;
         }
 
-        // Новая тема для следующего раунда
         const newTheme = WORD_BOMB_THEMES[Math.floor(Math.random() * WORD_BOMB_THEMES.length)];
         game.theme = newTheme.name;
         game.usedWords = [];
     }
 
-    // Передаём ход следующему
     const playerIds = Array.from(game.players.keys());
     const currentIndex = playerIds.indexOf(currentPlayerId);
     const nextIndex = (currentIndex + 1) % playerIds.length;
@@ -1558,7 +1524,6 @@ async function handleWordBombWord(message, game, userId, word) {
 
     const lowerWord = word.toLowerCase().trim();
 
-    // Проверка на повтор
     if (game.usedWords.some(w => w.toLowerCase() === lowerWord)) {
         player.bombs++;
 
@@ -1612,7 +1577,6 @@ async function handleWordBombWord(message, game, userId, word) {
             }
         }
 
-        // Передаём ход
         const playerIds = Array.from(game.players.keys());
         const currentIndex = playerIds.indexOf(userId);
         const nextIndex = (currentIndex + 1) % playerIds.length;
@@ -1621,7 +1585,6 @@ async function handleWordBombWord(message, game, userId, word) {
         return true;
     }
 
-    // Слово принято
     player.wordsGuessed++;
     game.usedWords.push(word);
 
@@ -1633,7 +1596,6 @@ async function handleWordBombWord(message, game, userId, word) {
 
     await message.edit({ embeds: [acceptEmbed], components: [] });
 
-    // Передаём ход следующему
     const playerIds = Array.from(game.players.keys());
     const currentIndex = playerIds.indexOf(userId);
     const nextIndex = (currentIndex + 1) % playerIds.length;
@@ -1853,6 +1815,7 @@ client.on(Events.MessageDelete, async (message) => {
     activeTicTacToe.delete(message.id);
     activeBattles.delete(message.id);
     activeHilo.delete(message.id);
+    activeWordBombs.delete(message.id);
     await Event.findOneAndUpdate({ messageId: message.id }, { active: false });
     await TicTacToe.findOneAndUpdate({ messageId: message.id }, { active: false });
     await Battle.findOneAndUpdate({ messageId: message.id }, { active: false });
