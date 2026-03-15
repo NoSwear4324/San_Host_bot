@@ -1141,8 +1141,10 @@ if (cmd === 'hilo') {
             const msg = await message.channel.send({ embeds: [embed], components: [row] });
 
             const players = new Map();
+            let embedUpdated = false;
 
             async function updatePlayersEmbed() {
+                if (embedUpdated) return; // Обновляем только 1 раз чтобы не спамить
                 const list = Array.from(players.keys()).map(id => `✅ <@${id}>`).join('\n') || '*No one has joined yet*';
                 const newEmbed = EmbedBuilder.from(embed.toJSON())
                     .setFields(
@@ -1151,7 +1153,12 @@ if (cmd === 'hilo') {
                         { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
                         { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
                     );
-                try { await msg.edit({ embeds: [newEmbed] }); } catch (e) {}
+                try {
+                    await msg.edit({ embeds: [newEmbed] });
+                    embedUpdated = true;
+                } catch (e) {
+                    console.error('Failed to update embed:', e.message);
+                }
             }
 
             const collector = msg.createMessageComponentCollector({
@@ -1166,8 +1173,18 @@ if (cmd === 'hilo') {
                             return interaction.reply({ content: '❌ Game is full (max 8 players)!', ephemeral: true });
                         }
                         players.set(interaction.user.id, { bombs: 0, wordsGuessed: 0 });
+                        console.log('💣 Player joined:', interaction.user.tag, 'Total:', players.size);
                         await interaction.reply({ content: '✅ You joined Word Bomb! Good luck! 🍀', ephemeral: true });
-                        await updatePlayersEmbed();
+                        // Обновляем эмбед сразу
+                        const list = Array.from(players.keys()).map(id => `✅ <@${id}>`).join('\n');
+                        const newEmbed = EmbedBuilder.from(embed.toJSON())
+                            .setFields(
+                                { name: '👥 Players', value: `**${players.size}** / 8\n${list}`, inline: false },
+                                { name: '🎯 Theme', value: `**${theme.name}**\n*e.g. ${theme.examples.join(', ')}*`, inline: true },
+                                { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+                                { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
+                            );
+                        await msg.edit({ embeds: [newEmbed] });
                     } else {
                         await interaction.reply({ content: '⚠️ You are already in this game!', ephemeral: true });
                     }
@@ -1177,8 +1194,18 @@ if (cmd === 'hilo') {
                 if (interaction.customId === 'wordbomb_leave') {
                     if (players.has(interaction.user.id)) {
                         players.delete(interaction.user.id);
+                        console.log('💣 Player left:', interaction.user.tag, 'Total:', players.size);
                         await interaction.reply({ content: '🚪 You left Word Bomb!', ephemeral: true });
-                        await updatePlayersEmbed();
+                        // Обновляем эмбед сразу
+                        const list = Array.from(players.keys()).map(id => `✅ <@${id}>`).join('\n') || '*No one has joined yet*';
+                        const newEmbed = EmbedBuilder.from(embed.toJSON())
+                            .setFields(
+                                { name: '👥 Players', value: `**${players.size}** / 8\n${list}`, inline: false },
+                                { name: '🎯 Theme', value: `**${theme.name}**\n*e.g. ${theme.examples.join(', ')}*`, inline: true },
+                                { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+                                { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
+                            );
+                        await msg.edit({ embeds: [newEmbed] });
                     } else {
                         await interaction.reply({ content: '❌ You are not in this game!', ephemeral: true });
                     }
