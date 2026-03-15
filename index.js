@@ -1865,14 +1865,17 @@ client.on(Events.MessageDelete, async (message) => {
 // ────────────────────────────────────────────────
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot || !message.guild) return;
+    
+    // Игнорируем команды (начинаются с -)
+    if (message.content.startsWith('-')) return;
 
-    // Проверяем, есть ли активная Word Bomb игра в этом канале
+    // Проверяем, есть ли активная Word Bomb игра
     for (const [msgId, game] of activeWordBombs.entries()) {
-        if (game.players.has(message.author.id) && game.currentTurn === message.author.id) {
+        if (game.players.has(message.author.id) && game.currentTurn === message.author.id && game.active) {
             const word = message.content.trim();
 
-            // Проверяем, что слово не пустое и не команда
-            if (word.length > 0 && !word.startsWith('-')) {
+            // Проверяем, что слово не пустое
+            if (word.length > 0) {
                 // Очищаем таймер
                 if (game.timer) {
                     clearTimeout(game.timer);
