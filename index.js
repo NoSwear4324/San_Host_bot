@@ -81,17 +81,23 @@ const battleSchema = new mongoose.Schema({
     active:       { type: Boolean, default: true }
 }, { timestamps: true });
 
+// 🔥 FIX: HILO схема — добавлены players массив
 const hiloSchema = new mongoose.Schema({
     messageId:    { type: String, required: true, unique: true },
     channelId:    { type: String, required: true },
-    userId:       { type: String, required: true },
+    host:         { type: String, required: true },
+    players:      [{ 
+        userId: String, 
+        score: { type: Number, default: 0 }, 
+        highScore: { type: Number, default: 0 },
+        currentNumber: { type: Number, default: 0 }
+    }],
     currentNumber:{ type: Number, required: true },
-    score:        { type: Number, default: 0 },
-    highScore:    { type: Number, default: 0 },
+    currentTurn:  { type: String, required: true },
     active:       { type: Boolean, default: true }
 }, { timestamps: true });
 
-// 🔥 FIX: Добавлена схема WordBomb (была причиной краша)
+// 🔥 FIX: Word Bomb схема — корректная структура
 const wordBombSchema = new mongoose.Schema({
     messageId:   { type: String, required: true, unique: true },
     channelId:   { type: String, required: true },
@@ -116,7 +122,7 @@ const Event = mongoose.model('Event', eventSchema);
 const TicTacToe = mongoose.model('TicTacToe', ticTacToeSchema);
 const Battle = mongoose.model('Battle', battleSchema);
 const HiLo = mongoose.model('HiLo', hiloSchema);
-const WordBomb = mongoose.model('WordBomb', wordBombSchema); // 🔥 FIX: Добавлена модель
+const WordBomb = mongoose.model('WordBomb', wordBombSchema);
 
 // ────────────────────────────────────────────────
 // Client
@@ -161,7 +167,7 @@ const activeEvents = new Map();
 const activeTicTacToe = new Map();
 const activeBattles = new Map();
 const activeHiLo = new Map();
-const activeWordBombs = new Map(); // 🔥 FIX: Добавлена декларация
+const activeWordBombs = new Map();
 
 // ────────────────────────────────────────────────
 // Game Constants
@@ -306,12 +312,10 @@ process.on('SIGINT', async () => {
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-    // Не завершаем процесс - бот продолжит работу
 });
 
 process.on('uncaughtException', (error) => {
     console.error('❌ Uncaught Exception:', error);
-    // Логируем ошибку, но не крашим процесс
 });
 
 // ────────────────────────────────────────────────
@@ -346,43 +350,70 @@ client.once(Events.ClientReady, async () => {
                 playerO: game.playerO,
                 currentTurn: game.currentTurn,
                 board: game.board,
-                winner: game.winner
+                winner: game.winner,
+                active: game.active
             });
         }
         console.log(`⭕ Loaded ${activeTicTacToe.size} active Tic-Tac-Toe games`);
 
+        // 🔥 FIX: Battle — правильная конвертация
         const battles = await Battle.find({ active: true });
         for (const battle of battles) {
+            const participantsMap = new Map(
+                battle.participants.map(p => [
+                    p.userId, 
+                    { hp: p.hp, maxHp: p.maxHp, attack: p.attack, item: p.item }
+                ])
+            );
+            const aliveSet = new Set(battle.alive.map(a => a.userId));
+            
             activeBattles.set(battle.messageId, {
                 _id: battle._id,
                 host: battle.host,
-                participants: new Map(battle.participants.map(p => [p.userId, { hp: p.hp, maxHp: p.maxHp, attack: p.attack, item: p.item }])),
+                participants: participantsMap,
                 round: battle.round,
-                alive: new Set(battle.alive.map(a => a.userId)),
-                winner: battle.winner
+                alive: aliveSet,
+                winner: battle.winner,
+                active: battle.active
             });
         }
         console.log(`⚔️ Loaded ${activeBattles.size} active battles`);
 
+        // 🔥 FIX: HILO — правильная конвертация players массив → Map
         const hiloGames = await HiLo.find({ active: true });
         for (const game of hiloGames) {
+            const playersMap = new Map(
+                game.players.map(p => [
+                    p.userId,
+                    { score: p.score, highScore: p.highScore, currentNumber: p.currentNumber }
+                ])
+            );
+            
             activeHiLo.set(game.messageId, {
                 _id: game._id,
-                userId: game.userId,
+                host: game.host,
+                players: playersMap,
+                currentTurn: game.currentTurn,
                 currentNumber: game.currentNumber,
-                score: game.score,
-                highScore: game.highScore
+                active: game.active
             });
         }
         console.log(`📈 Loaded ${activeHiLo.size} active Hi-Lo games`);
 
-        // 🔥 FIX: Загрузка активных Word Bomb игр
+        // 🔥 FIX: Word Bomb — правильная конвертация players массив → Map
         const wordBombGames = await WordBomb.find({ active: true });
         for (const game of wordBombGames) {
+            const playersMap = new Map(
+                game.players.map(p => [
+                    p.userId,
+                    { bombs: p.bombs, wordsGuessed: p.wordsGuessed }
+                ])
+            );
+            
             activeWordBombs.set(game.messageId, {
                 _id: game._id,
                 host: game.host,
-                players: new Map(game.players.map(p => [p.userId, { bombs: p.bombs, wordsGuessed: p.wordsGuessed }])),
+                players: playersMap,
                 theme: game.theme,
                 usedWords: game.usedWords,
                 currentTurn: game.currentTurn,
@@ -685,7 +716,8 @@ client.on(Events.MessageCreate, async (message) => {
                         playerO: opponent.id,
                         currentTurn: message.author.id,
                         board,
-                        winner: null
+                        winner: null,
+                        active: true
                     });
                 }
             });
@@ -802,6 +834,7 @@ client.on(Events.MessageCreate, async (message) => {
                         components: [] 
                     });
                 }
+
                 const participantsArray = Array.from(participants.entries()).map(([userId, data]) => ({
                     userId,
                     hp: data.hp,
@@ -820,14 +853,14 @@ client.on(Events.MessageCreate, async (message) => {
                     winner: null
                 });
 
-                const aliveSet = new Set(participants.keys());
                 activeBattles.set(msg.id, {
                     _id: msg.id,
                     host: message.author.id,
-                    participants,
+                    participants: new Map(participants),
                     round: 0,
-                    alive: aliveSet,
-                    winner: null
+                    alive: new Set(participants.keys()),
+                    winner: null,
+                    active: true
                 });
 
                 const startEmbed = new EmbedBuilder()
@@ -842,7 +875,10 @@ client.on(Events.MessageCreate, async (message) => {
                 
                 setTimeout(() => {
                     const battle = activeBattles.get(msg.id);
-                    if (battle) startBattleRound(msg, battle);
+                    if (battle?.active) {
+                        console.log('🎮 Starting Battle Round 1, alive:', battle.alive.size);
+                        startBattleRound(msg, battle);
+                    }
                 }, 3000);
             });
 
@@ -957,15 +993,18 @@ client.on(Events.MessageCreate, async (message) => {
                     channelId: msg.channel.id,
                     host: message.author.id,
                     players: playersArray,
-                    active: true
+                    currentNumber: startNumber,
+                    currentTurn: Array.from(players.keys())[0]
                 });
 
+                // 🔥 FIX: Правильная структура кэша
                 activeHiLo.set(msg.id, {
                     _id: msg.id,
                     host: message.author.id,
                     players: new Map(players),
                     currentTurn: Array.from(players.keys())[0],
-                    currentNumber: startNumber
+                    currentNumber: startNumber,
+                    active: true
                 });
 
                 await msg.edit({
@@ -981,7 +1020,10 @@ client.on(Events.MessageCreate, async (message) => {
 
                 setTimeout(() => {
                     const game = activeHiLo.get(msg.id);
-                    if (game) startHiloRound(msg, game);
+                    if (game?.active) {
+                        console.log('📈 Starting HILO, players:', game.players.size);
+                        startHiloRound(msg, game);
+                    }
                 }, 3000);
             });
 
@@ -1077,17 +1119,6 @@ client.on(Events.MessageCreate, async (message) => {
             });
 
             collector.on('end', async (collected, reason) => {
-                // 🔥 FIX: Проверка что игра ещё не началась
-                if (!activeWordBombs.has(msg.id) && players.size < 2) {
-                    return msg.edit({
-                        embeds: [new EmbedBuilder()
-                            .setColor(0xFF6B00)
-                            .setTitle('❌ Word Bomb Cancelled')
-                            .setDescription(`Not enough players (need at least 2, got **${players.size}**)`)],
-                        components: []
-                    });
-                }
-                
                 if (players.size < 2) {
                     return msg.edit({
                         embeds: [new EmbedBuilder()
@@ -1115,6 +1146,7 @@ client.on(Events.MessageCreate, async (message) => {
                     winner: null
                 });
 
+                // 🔥 FIX: Правильная структура кэша
                 activeWordBombs.set(msg.id, {
                     _id: msg.id,
                     host: message.author.id,
@@ -1140,7 +1172,10 @@ client.on(Events.MessageCreate, async (message) => {
 
                 setTimeout(() => {
                     const game = activeWordBombs.get(msg.id);
-                    if (game?.active) startWordBombRound(msg, game);
+                    if (game?.active) {
+                        console.log('💣 Starting Word Bomb, players:', game.players.size);
+                        startWordBombRound(msg, game);
+                    }
                 }, 3000);
             });
 
@@ -1197,9 +1232,6 @@ client.on(Events.MessageCreate, async (message) => {
         }
     } catch (err) {
         console.error('Error handling command:', cmd, err.message);
-        if (!message.replied && !message.channel?.permissionsFor(client.user)?.has('SendMessages')) {
-            return;
-        }
         try {
             await message.reply('❌ An error occurred while processing your command.').catch(() => {});
         } catch (e) {}
@@ -1307,27 +1339,33 @@ function renderBoard(board) {
 // ────────────────────────────────────────────────
 async function startBattleRound(message, battle) {
     try {
-        // 🔥 FIX: Проверка что игра ещё активна
-        if (!battle?.active) return;
+        if (!battle?.active) {
+            console.log('⚠️ Battle not active, skipping round');
+            return;
+        }
         
         const round = ++battle.round;
         const aliveArray = Array.from(battle.alive);
         
+        console.log('🎮 Battle Round', round, '- Alive:', aliveArray.length);
+        
         if (aliveArray.length === 1) {
             battle.winner = aliveArray[0];
             battle.active = false;
+            
             await Battle.findOneAndUpdate({ messageId: message.id }, {
                 winner: battle.winner,
                 active: false,
                 round: battle.round
-            });
+            }).catch(console.error);
+            
             activeBattles.delete(message.id);
             
             const winnerData = battle.participants.get(battle.winner);
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
                 .setTitle('⚔️ Battle - Game Over!')
-                .setDescription(`🏆 Winner: **${winnerData.hp} HP** remaining!\n\nFinal Stats:\n❤️ HP: ${winnerData.hp}/${winnerData.maxHp}\n⚔️ Attack: ${winnerData.attack}`)
+                .setDescription(`🏆 Winner: **<@${battle.winner}>** with **${winnerData?.hp || 0} HP** remaining!`)
                 .setTimestamp();
             
             return message.edit({ 
@@ -1339,7 +1377,7 @@ async function startBattleRound(message, battle) {
 
         if (aliveArray.length === 0) {
             battle.active = false;
-            await Battle.findOneAndUpdate({ messageId: message.id }, { active: false });
+            await Battle.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error);
             activeBattles.delete(message.id);
             return;
         }
@@ -1365,6 +1403,7 @@ async function startBattleRound(message, battle) {
 
             let eventText = '';
             const rng = Math.random();
+            
             if (item.heal > 0) {
                 player.hp = Math.min(player.maxHp, player.hp + item.heal);
                 eventText = `<@${userId}> found **${item.name}** and healed for **${item.heal} HP**! (${player.hp}/${player.maxHp})`;
@@ -1391,16 +1430,17 @@ async function startBattleRound(message, battle) {
             }
 
             events.push(eventText);
+            
             await Battle.findOneAndUpdate(
                 { messageId: message.id, 'participants.userId': userId },
                 { $set: { 'participants.$.hp': player.hp, 'participants.$.item': player.item } }
-            );
+            ).catch(console.error);
         }
 
         await Battle.findOneAndUpdate({ messageId: message.id }, {
             round: battle.round,
             alive: Array.from(battle.alive).map(id => ({ userId: id }))
-        });
+        }).catch(console.error);
 
         const aliveList = Array.from(battle.alive)
             .map(id => {
@@ -1427,21 +1467,28 @@ async function startBattleRound(message, battle) {
         await message.edit({ embeds: [embed], components: [] });
 
         if (battle.alive.size > 1 && battle.active) {
-            setTimeout(() => startBattleRound(message, battle), 5000);
-        } else if (battle.active) {
-            startBattleRound(message, battle);
+            setTimeout(() => {
+                const freshBattle = activeBattles.get(message.id);
+                if (freshBattle?.active) {
+                    startBattleRound(message, freshBattle);
+                }
+            }, 5000);
         }
+        
     } catch (err) {
-        console.error('Error in startBattleRound:', err.message);
+        console.error('❌ Error in startBattleRound:', err.message);
     }
 }
 
 // ────────────────────────────────────────────────
-// HILO Functions
+// HILO Functions 🔥 FIX
 // ────────────────────────────────────────────────
 async function startHiloRound(message, game) {
     try {
-        if (!game?.active) return;
+        if (!game?.active || !activeHiLo.has(message.id)) {
+            console.log('⚠️ HILO not active, skipping round');
+            return;
+        }
         
         const currentPlayerId = game.currentTurn;
         const player = game.players.get(currentPlayerId);
@@ -1449,10 +1496,12 @@ async function startHiloRound(message, game) {
 
         if (!player) {
             const playerIds = Array.from(game.players.keys());
-            if (playerIds.length === 0) return;
-            const currentIndex = playerIds.indexOf(currentPlayerId);
-            const nextIndex = (currentIndex + 1) % playerIds.length;
-            game.currentTurn = playerIds[nextIndex];
+            if (playerIds.length === 0) {
+                game.active = false;
+                activeHiLo.delete(message.id);
+                return;
+            }
+            game.currentTurn = playerIds[0];
             return startHiloRound(message, game);
         }
 
@@ -1585,19 +1634,25 @@ async function processHiloGuess(interaction, game, isHigher) {
 }
 
 // ────────────────────────────────────────────────
-// Word Bomb Functions
+// Word Bomb Functions 🔥 FIX
 // ────────────────────────────────────────────────
 async function startWordBombRound(message, game) {
     try {
-        // 🔥 FIX: Проверки активности игры
-        if (!game?.active || !activeWordBombs.has(message.id)) return;
+        if (!game?.active || !activeWordBombs.has(message.id)) {
+            console.log('⚠️ Word Bomb not active, skipping round');
+            return;
+        }
         
         const currentPlayerId = game.currentTurn;
         const player = game.players.get(currentPlayerId);
 
         if (!player) {
             const playerIds = Array.from(game.players.keys());
-            if (playerIds.length === 0) return;
+            if (playerIds.length === 0) {
+                game.active = false;
+                activeWordBombs.delete(message.id);
+                return;
+            }
             game.currentTurn = playerIds[0];
             return startWordBombRound(message, game);
         }
@@ -1615,12 +1670,11 @@ async function startWordBombRound(message, game) {
 
         await message.edit({ embeds: [embed], components: [] });
 
-        // Очищаем старый таймер если есть
         if (game.timer) {
             clearTimeout(game.timer);
+            game.timer = null;
         }
         
-        // Запускаем новый таймер
         game.timer = setTimeout(async () => {
             if (game.active) await handleWordBombTimeout(message, game);
         }, 10000);
@@ -1826,12 +1880,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const customId = interaction.customId;
 
     try {
-        // === BATTLE/HILO/WORD BOMB JOIN/LEAVE BUTTONS ===
         if (['battle_join', 'battle_leave', 'hilo_join', 'hilo_leave', 'wordbomb_join', 'wordbomb_leave', 'ttt_accept', 'ttt_decline'].includes(customId)) {
             return interaction.deferUpdate().catch(() => {});
         }
 
-        // === HILO GUESS BUTTONS ===
         if (customId === 'hilo_higher' || customId === 'hilo_lower') {
             const game = activeHiLo.get(interaction.message.id);
             if (!game || !game.active) return;
@@ -1845,7 +1897,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return;
         }
 
-        // === TIC-TAC-TOE BUTTONS ===
         if (customId.startsWith('ttt_')) {
             const game = activeTicTacToe.get(interaction.message.id);
             if (!game || game.winner) return;
