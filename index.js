@@ -1335,7 +1335,7 @@ function renderBoard(board) {
 }
 
 // ────────────────────────────────────────────────
-// Battle Functions
+// Battle Functions 🔥 FIX — Победитель не зависает
 // ────────────────────────────────────────────────
 async function startBattleRound(message, battle) {
     try {
@@ -1345,10 +1345,11 @@ async function startBattleRound(message, battle) {
         }
         
         const round = ++battle.round;
-        const aliveArray = Array.from(battle.alive);
+        let aliveArray = Array.from(battle.alive);
         
         console.log('🎮 Battle Round', round, '- Alive:', aliveArray.length);
         
+        // ✅ ПРОВЕРКА ПОБЕДИТЕЛЯ — в начале раунда
         if (aliveArray.length === 1) {
             battle.winner = aliveArray[0];
             battle.active = false;
@@ -1368,11 +1369,17 @@ async function startBattleRound(message, battle) {
                 .setDescription(`🏆 Winner: **<@${battle.winner}>** with **${winnerData?.hp || 0} HP** remaining!`)
                 .setTimestamp();
             
-            return message.edit({ 
-                content: `🎉 **<@${battle.winner}>** WINS THE BATTLE!`, 
-                embeds: [embed], 
-                components: [] 
-            });
+            try {
+                await message.edit({ 
+                    content: `🎉 **<@${battle.winner}>** WINS THE BATTLE!`, 
+                    embeds: [embed], 
+                    components: [] 
+                });
+                console.log('✅ Battle winner announced successfully');
+            } catch (err) {
+                console.error('❌ Failed to edit message for winner:', err.message);
+            }
+            return; // ✅ Важно: выходим из функции
         }
 
         if (aliveArray.length === 0) {
@@ -1386,6 +1393,7 @@ async function startBattleRound(message, battle) {
         const shuffled = [...aliveArray].sort(() => Math.random() - 0.5);
 
         for (const userId of shuffled) {
+            // ✅ ПРОВЕРКА: игрок всё ещё жив? (мог умереть в этом же раунде)
             if (!battle.alive.has(userId)) continue;
             
             const player = battle.participants.get(userId);
@@ -1394,6 +1402,8 @@ async function startBattleRound(message, battle) {
             const item = BATTLE_ITEMS[Math.floor(Math.random() * BATTLE_ITEMS.length)];
             player.item = item.name;
 
+            // ✅ Получаем актуальный список живых (мог измениться)
+            aliveArray = Array.from(battle.alive);
             const targets = aliveArray.filter(id => id !== userId);
             if (targets.length === 0) continue;
             
@@ -1437,11 +1447,13 @@ async function startBattleRound(message, battle) {
             ).catch(console.error);
         }
 
+        // ✅ Сохраняем в БД
         await Battle.findOneAndUpdate({ messageId: message.id }, {
             round: battle.round,
             alive: Array.from(battle.alive).map(id => ({ userId: id }))
         }).catch(console.error);
 
+        // ✅ Формируем список живых
         const aliveList = Array.from(battle.alive)
             .map(id => {
                 const p = battle.participants.get(id);
@@ -1464,8 +1476,53 @@ async function startBattleRound(message, battle) {
             .setFooter({ text: battle.alive.size > 1 ? 'Next round in 5 seconds...' : 'Determining winner...' })
             .setTimestamp();
 
-        await message.edit({ embeds: [embed], components: [] });
+        try {
+            await message.edit({ embeds: [embed], components: [] });
+        } catch (err) {
+            console.error('❌ Failed to edit message:', err.message);
+        }
 
+        // ✅ ПРОВЕРКА ПОБЕДИТЕЛЯ — после обработки урона!
+        aliveArray = Array.from(battle.alive);
+        if (aliveArray.length <= 1) {
+            console.log('🏆 Winner detected after round!', aliveArray.length);
+            
+            if (aliveArray.length === 1) {
+                battle.winner = aliveArray[0];
+            }
+            battle.active = false;
+            
+            await Battle.findOneAndUpdate({ messageId: message.id }, {
+                winner: battle.winner,
+                active: false,
+                round: battle.round
+            }).catch(console.error);
+            
+            activeBattles.delete(message.id);
+            
+            if (battle.winner) {
+                const winnerData = battle.participants.get(battle.winner);
+                const winEmbed = new EmbedBuilder()
+                    .setColor(0x00FF00)
+                    .setTitle('⚔️ Battle - Game Over!')
+                    .setDescription(`🏆 Winner: **<@${battle.winner}>** with **${winnerData?.hp || 0} HP** remaining!`)
+                    .setTimestamp();
+                
+                try {
+                    await message.edit({ 
+                        content: `🎉 **<@${battle.winner}>** WINS THE BATTLE!`, 
+                        embeds: [winEmbed], 
+                        components: [] 
+                    });
+                    console.log('✅ Battle winner announced successfully');
+                } catch (err) {
+                    console.error('❌ Failed to edit message for winner:', err.message);
+                }
+            }
+            return; // ✅ Выходим, не запускаем следующий раунд!
+        }
+
+        // ✅ Запускаем следующий раунд только если есть 2+ живых
         if (battle.alive.size > 1 && battle.active) {
             setTimeout(() => {
                 const freshBattle = activeBattles.get(message.id);
