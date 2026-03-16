@@ -1063,11 +1063,15 @@ if (cmd === 'hilo') {
         setTimeout(() => {
             const game = activeHiLo.get(msg.id);
             console.log('⏰ HILO timeout fired. Game in cache:', !!game, 'Active:', game?.active);
-            if (game && game.active) {
+            if (game && game.active && game.players.size > 1) {
                 console.log('📈 Starting HILO Round 1, players:', game.players.size);
                 startHiloRound(msg, game);
             } else {
                 console.log('❌ HILO not found or not active, skipping round 1');
+                if (game) {
+                    console.log('  - Game.active:', game.active);
+                    console.log('  - Game.players.size:', game.players.size);
+                }
             }
         }, 3000);
     });
@@ -1439,13 +1443,22 @@ async function startBattleRound(message, battle) {
 // ────────────────────────────────────────────────
 async function startHiloRound(message, game) {
     try {
-        if (!game?.active || !activeHiLo.has(message.id)) {
-            console.log('⚠️ HILO not active, skipping round');
+        // ✅ Проверки активности
+        if (!game) {
+            console.log('⚠️ HILO startHiloRound - game is null');
+            return;
+        }
+        
+        if (!game.active) {
+            console.log('⚠️ HILO startHiloRound - game not active');
             return;
         }
 
+        console.log('📈 startHiloRound called. Players:', game.players.size, 'Active:', game.active);
+
         // Проверка победителя (остался 1 игрок)
         if (game.players.size === 1) {
+            console.log('🏆 HILO Winner detected!');
             const winnerId = Array.from(game.players.keys())[0];
             const winner = game.players.get(winnerId);
 
@@ -1465,11 +1478,13 @@ async function startHiloRound(message, game) {
             });
 
             await HiLo.findOneAndUpdate({ messageId: message.id }, { active: false });
+            console.log('✅ HILO winner announced');
             return;
         }
 
         // Проверка - если игроков 0
         if (game.players.size === 0) {
+            console.log('❌ HILO - No players left!');
             game.active = false;
             activeHiLo.delete(message.id);
             await message.edit({
