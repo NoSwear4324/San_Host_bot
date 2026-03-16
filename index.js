@@ -1059,21 +1059,16 @@ if (cmd === 'hilo') {
         });
         console.log('✅ HILO start message edited');
 
-        // ✅ Запускаем первый раунд через 3 секунды
+        // ✅ Запускаем первый раунд через 2 секунды
         setTimeout(() => {
             const game = activeHiLo.get(msg.id);
-            console.log('⏰ HILO timeout fired. Game in cache:', !!game, 'Active:', game?.active);
-            if (game && game.active && game.players.size > 1) {
+            if (game && game.active && game.players.size >= 1) {
                 console.log('📈 Starting HILO Round 1, players:', game.players.size);
                 startHiloRound(msg, game);
             } else {
-                console.log('❌ HILO not found or not active, skipping round 1');
-                if (game) {
-                    console.log('  - Game.active:', game.active);
-                    console.log('  - Game.players.size:', game.players.size);
-                }
+                console.log('❌ Cannot start round - game:', !!game, 'active:', game?.active, 'players:', game?.players.size);
             }
-        }, 3000);
+        }, 2000);
     });
 
     return;
@@ -1528,7 +1523,7 @@ async function startHiloRound(message, game) {
 
         // Ждём 15 секунд на голосование
         game.timer = setTimeout(async () => {
-            if (game.active && game.players.size > 1) {
+            if (game.active && game.players.size >= 1) {
                 await processHiloVotes(message, game);
             }
         }, 15000);
