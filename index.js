@@ -841,11 +841,16 @@ client.on(Events.MessageCreate, async (message) => {
                 winner: null
             });
 
-            // Если это reply на сообщение - используем editReply, иначе edit
+            // Отправляем НОВОЕ сообщение с игрой (не редактируем лобби!)
+            await interaction.channel.send({
+                content: `🎮 **Game Started!** <@${playerXId}> vs <@${playerOId}>`,
+                embeds: [gameEmbed],
+                components: [row1, row2, row3]
+            });
+
+            // Если это кнопка - подтверждаем взаимодействие
             if (interaction.isButton()) {
-                await interaction.update({ embeds: [gameEmbed], components: [row1, row2, row3] });
-            } else {
-                await interaction.reply({ embeds: [gameEmbed], components: [row1, row2, row3] });
+                await interaction.deferUpdate().catch(() => {});
             }
         }
         // ────────────────────────────────────────────────
