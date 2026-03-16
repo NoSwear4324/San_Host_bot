@@ -97,23 +97,6 @@ const hiloSchema = new mongoose.Schema({
     active:       { type: Boolean, default: true }
 }, { timestamps: true });
 
-// 🔥 FIX: Word Bomb схема — корректная структура
-const wordBombSchema = new mongoose.Schema({
-    messageId:   { type: String, required: true, unique: true },
-    channelId:   { type: String, required: true },
-    host:        { type: String, required: true },
-    players:     [{ 
-        userId: String, 
-        bombs: { type: Number, default: 0 }, 
-        wordsGuessed: { type: Number, default: 0 } 
-    }],
-    theme:       { type: String, required: true },
-    usedWords:   [String],
-    currentTurn: { type: String, required: true },
-    winner:      { type: String, default: null },
-    active:      { type: Boolean, default: true }
-}, { timestamps: true });
-
 // ────────────────────────────────────────────────
 // Models
 // ────────────────────────────────────────────────
@@ -122,7 +105,6 @@ const Event = mongoose.model('Event', eventSchema);
 const TicTacToe = mongoose.model('TicTacToe', ticTacToeSchema);
 const Battle = mongoose.model('Battle', battleSchema);
 const HiLo = mongoose.model('HiLo', hiloSchema);
-const WordBomb = mongoose.model('WordBomb', wordBombSchema);
 
 // ────────────────────────────────────────────────
 // Client
@@ -167,7 +149,6 @@ const activeEvents = new Map();
 const activeTicTacToe = new Map();
 const activeBattles = new Map();
 const activeHiLo = new Map();
-const activeWordBombs = new Map();
 
 // ────────────────────────────────────────────────
 // Game Constants
@@ -185,19 +166,24 @@ const BATTLE_ITEMS = [
     { name: '🌟 Miracle', damage: 50, heal: 0 },
     { name: '💀 Poison', damage: 35, heal: -10 },
     { name: '🍖 Meat', damage: 0, heal: 20 },
-];
-
-const WORD_BOMB_THEMES = [
-    { name: 'FOOD', examples: ['Pizza', 'Burger', 'Pasta'] },
-    { name: 'ANIMALS', examples: ['Dog', 'Cat', 'Elephant'] },
-    { name: 'CITIES', examples: ['London', 'Paris', 'Tokyo'] },
-    { name: 'COLORS', examples: ['Red', 'Blue', 'Green'] },
-    { name: 'SPORTS', examples: ['Football', 'Tennis', 'Golf'] },
-    { name: 'JOBS', examples: ['Doctor', 'Teacher', 'Chef'] },
-    { name: 'BODY PARTS', examples: ['Hand', 'Foot', 'Eye'] },
-    { name: 'VEHICLES', examples: ['Car', 'Bus', 'Train'] },
-    { name: 'COUNTRIES', examples: ['USA', 'China', 'Brazil'] },
-    { name: 'MOVIES', examples: ['Titanic', 'Avatar', 'Joker'] }
+    { name: '🔪 Knife', damage: 12, heal: 0 },
+    { name: '🪓 Axe', damage: 25, heal: 0 },
+    { name: '🏹 Bow', damage: 18, heal: 0 },
+    { name: '🪄 Wand', damage: 22, heal: 0 },
+    { name: '💎 Crystal', damage: 30, heal: 0 },
+    { name: '🌿 Herb', damage: 0, heal: 15 },
+    { name: '☢️ Nuke', damage: 50, heal: 0 },
+    { name: '🔨 Hammer', damage: 20, heal: 0 },
+    { name: '⛓️ Chain', damage: 15, heal: 0 },
+    { name: '🧨 Dynamite', damage: 35, heal: 0 },
+    { name: '🍺 Beer', damage: 0, heal: 10 },
+    { name: '💉 Serum', damage: 0, heal: 30 },
+    { name: '🌵 Cactus', damage: 10, heal: 0 },
+    { name: '🍄 Mushroom', damage: 0, heal: 20 },
+    { name: '🔮 Orb', damage: 28, heal: 0 },
+    { name: '📯 Horn', damage: 15, heal: 0 },
+    { name: '🪃 Boomerang', damage: 20, heal: 0 },
+    { name: '🎯 Dart', damage: 10, heal: 0 }
 ];
 
 // ────────────────────────────────────────────────
@@ -400,30 +386,6 @@ for (const game of hiloGames) {
 }
 console.log(`📈 Loaded ${activeHiLo.size} active Hi-Lo games`);
 
-        // 🔥 FIX: Word Bomb — правильная конвертация players массив → Map
-        const wordBombGames = await WordBomb.find({ active: true });
-        for (const game of wordBombGames) {
-            const playersMap = new Map(
-                game.players.map(p => [
-                    p.userId,
-                    { bombs: p.bombs, wordsGuessed: p.wordsGuessed }
-                ])
-            );
-            
-            activeWordBombs.set(game.messageId, {
-                _id: game._id,
-                host: game.host,
-                players: playersMap,
-                theme: game.theme,
-                usedWords: game.usedWords,
-                currentTurn: game.currentTurn,
-                winner: game.winner,
-                active: game.active,
-                timer: null
-            });
-        }
-        console.log(`💣 Loaded ${activeWordBombs.size} active Word Bomb games`);
-
         client.user.setPresence({
             activities: [{ name: '-help • RBX Events & Games', type: ActivityType.Watching }],
             status: 'online'
@@ -609,7 +571,7 @@ client.on(Events.MessageCreate, async (message) => {
                     })),
                     { name: '\u200b', value: '\u200b', inline: true },
                     { name: '📊 Statistics', value: '`-status [@user]` — View host statistics\n`-toprating` — Top hosts by rating', inline: false },
-                    { name: '🎮 Games', value: '`-ttt @user` — Tic-Tac-Toe\n`-battle [time]` — Battle Royale\n`-hilo [time]` — HILO\n`', inline: false },
+                    { name: '🎮 Games', value: '`-ttt @user` — Tic-Tac-Toe\n`-battle [time]` — Battle Royale\n`-hilo [time]` — HILO', inline: false },
                     { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count', inline: false },
                     { name: '❓ Help', value: '`-help` — Show this message', inline: false }
                 )
@@ -1105,185 +1067,6 @@ if (cmd === 'hilo') {
     return;
 }
  
-        // === WORD BOMB ===
-        if (cmd === 'wordbomb') {
-            let timeSeconds = 30;
-            if (args[0]) {
-                const parsed = parseInt(args[0]);
-                if (!isNaN(parsed) && parsed >= 10 && parsed <= 300) {
-                    timeSeconds = parsed;
-                }
-            }
-
-            const startTime = Math.floor(Date.now() / 1000) + timeSeconds;
-            const theme = WORD_BOMB_THEMES[Math.floor(Math.random() * WORD_BOMB_THEMES.length)];
-
-            const embed = new EmbedBuilder()
-                .setColor(0xFF6B00)
-                .setTitle('💣 Word Bomb')
-                .setDescription('**Quick word game!**\nType a word by the theme before time runs out!\n💣 3 bombs = eliminated\n🏆 Last player wins!')
-                .addFields(
-                    { name: '👥 Players', value: '**0** / 8\n*No one has joined yet*', inline: false },
-                    { name: '🎯 Theme', value: `**${theme.name}**\n*e.g. ${theme.examples.join(', ')}*`, inline: true },
-                    { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
-                    { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
-                )
-                .setFooter({ text: 'Click "Join" or "Leave" before game starts!' })
-                .setTimestamp(startTime * 1000);
-
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('wordbomb_join')
-                        .setLabel('Join Word Bomb')
-                        .setStyle(ButtonStyle.Success)
-                        .setEmoji('💣'),
-                    new ButtonBuilder()
-                        .setCustomId('wordbomb_leave')
-                        .setLabel('Leave')
-                        .setStyle(ButtonStyle.Secondary)
-                        .setEmoji('🚪')
-                );
-
-            const msg = await message.channel.send({ embeds: [embed], components: [row] });
-
-            const players = new Map();
-            let embedUpdated = false;
-
-            async function updatePlayersEmbed() {
-                if (embedUpdated) return; // Обновляем только 1 раз чтобы не спамить
-                const list = Array.from(players.keys()).map(id => `✅ <@${id}>`).join('\n') || '*No one has joined yet*';
-                const newEmbed = EmbedBuilder.from(embed.toJSON())
-                    .setFields(
-                        { name: '👥 Players', value: `**${players.size}** / 8\n${list}`, inline: false },
-                        { name: '🎯 Theme', value: `**${theme.name}**\n*e.g. ${theme.examples.join(', ')}*`, inline: true },
-                        { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
-                        { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
-                    );
-                try {
-                    await msg.edit({ embeds: [newEmbed] });
-                    embedUpdated = true;
-                } catch (e) {
-                    console.error('Failed to update embed:', e.message);
-                }
-            }
-
-            const collector = msg.createMessageComponentCollector({
-                filter: i => ['wordbomb_join', 'wordbomb_leave'].includes(i.customId) && !i.user.bot,
-                time: timeSeconds * 1000
-            });
-
-            collector.on('collect', async (interaction) => {
-                if (interaction.customId === 'wordbomb_join') {
-                    if (!players.has(interaction.user.id)) {
-                        if (players.size >= 8) {
-                            return interaction.reply({ content: '❌ Game is full (max 8 players)!', ephemeral: true });
-                        }
-                        players.set(interaction.user.id, { bombs: 0, wordsGuessed: 0 });
-                        console.log('💣 Player joined:', interaction.user.tag, 'Total:', players.size);
-                        await interaction.reply({ content: '✅ You joined Word Bomb! Good luck! 🍀', ephemeral: true });
-                        // Обновляем эмбед сразу
-                        const list = Array.from(players.keys()).map(id => `✅ <@${id}>`).join('\n');
-                        const newEmbed = EmbedBuilder.from(embed.toJSON())
-                            .setFields(
-                                { name: '👥 Players', value: `**${players.size}** / 8\n${list}`, inline: false },
-                                { name: '🎯 Theme', value: `**${theme.name}**\n*e.g. ${theme.examples.join(', ')}*`, inline: true },
-                                { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
-                                { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
-                            );
-                        await msg.edit({ embeds: [newEmbed] });
-                    } else {
-                        await interaction.reply({ content: '⚠️ You are already in this game!', ephemeral: true });
-                    }
-                    return;
-                }
-
-                if (interaction.customId === 'wordbomb_leave') {
-                    if (players.has(interaction.user.id)) {
-                        players.delete(interaction.user.id);
-                        console.log('💣 Player left:', interaction.user.tag, 'Total:', players.size);
-                        await interaction.reply({ content: '🚪 You left Word Bomb!', ephemeral: true });
-                        // Обновляем эмбед сразу
-                        const list = Array.from(players.keys()).map(id => `✅ <@${id}>`).join('\n') || '*No one has joined yet*';
-                        const newEmbed = EmbedBuilder.from(embed.toJSON())
-                            .setFields(
-                                { name: '👥 Players', value: `**${players.size}** / 8\n${list}`, inline: false },
-                                { name: '🎯 Theme', value: `**${theme.name}**\n*e.g. ${theme.examples.join(', ')}*`, inline: true },
-                                { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
-                                { name: '🎮 Host', value: `<@${message.author.id}>`, inline: true }
-                            );
-                        await msg.edit({ embeds: [newEmbed] });
-                    } else {
-                        await interaction.reply({ content: '❌ You are not in this game!', ephemeral: true });
-                    }
-                    return;
-                }
-            });
-
-            collector.on('end', async (collected, reason) => {
-                if (players.size < 2) {
-                    return msg.edit({
-                        embeds: [new EmbedBuilder()
-                            .setColor(0xFF6B00)
-                            .setTitle('❌ Word Bomb Cancelled')
-                            .setDescription(`Not enough players (need at least 2, got **${players.size}**)`)],
-                        components: []
-                    });
-                }
-
-                const playersArray = Array.from(players.entries()).map(([userId, data]) => ({
-                    userId,
-                    bombs: data.bombs,
-                    wordsGuessed: data.wordsGuessed
-                }));
-
-                await WordBomb.create({
-                    messageId: msg.id,
-                    channelId: msg.channel.id,
-                    host: message.author.id,
-                    players: playersArray,
-                    theme: theme.name,
-                    usedWords: [],
-                    currentTurn: Array.from(players.keys())[0],
-                    winner: null
-                });
-
-                // 🔥 FIX: Правильная структура кэша
-                activeWordBombs.set(msg.id, {
-                    _id: msg.id,
-                    host: message.author.id,
-                    players: new Map(players),
-                    theme: theme.name,
-                    usedWords: [],
-                    currentTurn: Array.from(players.keys())[0],
-                    winner: null,
-                    active: true,
-                    timer: null
-                });
-
-                await msg.edit({
-                    content: `💣 **Word Bomb Started!** ${Array.from(players.keys()).map(id => `<@${id}>`).join(' ')}`,
-                    embeds: [new EmbedBuilder()
-                        .setColor(0xFF6B00)
-                        .setTitle(`💣 Word Bomb - Theme: ${theme.name}`)
-                        .setDescription(`**${players.size} players joined!**\n\nType a word related to **${theme.name}**!\nYou have **10 seconds** per turn!`)
-                        .setFooter({ text: 'Game in progress...' })
-                        .setTimestamp()],
-                    components: []
-                });
-
-                setTimeout(() => {
-                    const game = activeWordBombs.get(msg.id);
-                    if (game?.active) {
-                        console.log('💣 Starting Word Bomb, players:', game.players.size);
-                        startWordBombRound(msg, game);
-                    }
-                }, 3000);
-            });
-
-            return;
-        }
-
         // === ADMIN: setstats ===
         if (cmd === 'setstats') {
             if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
@@ -1864,271 +1647,6 @@ async function processHiloGuess(interaction, game, isHigher) {
 }
 
 // ────────────────────────────────────────────────
-// Word Bomb Functions 🔥 FIX
-// ────────────────────────────────────────────────
-async function startWordBombRound(message, game) {
-    try {
-        if (!game?.active || !activeWordBombs.has(message.id)) {
-            console.log('⚠️ Word Bomb not active, skipping round');
-            return;
-        }
-        
-        const currentPlayerId = game.currentTurn;
-        const player = game.players.get(currentPlayerId);
-
-        if (!player) {
-            const playerIds = Array.from(game.players.keys());
-            if (playerIds.length === 0) {
-                game.active = false;
-                activeWordBombs.delete(message.id);
-                return;
-            }
-            game.currentTurn = playerIds[0];
-            return startWordBombRound(message, game);
-        }
-
-        const embed = new EmbedBuilder()
-            .setColor(0xFF6B00)
-            .setTitle(`💣 Word Bomb - Theme: ${game.theme}`)
-            .setDescription(`**<@${currentPlayerId}>'s turn!**\n\nType a word related to **${game.theme}**!\nYou have **10 seconds**!`)
-            .addFields(
-                { name: '💣 Bombs', value: Array.from(game.players.entries()).map(([id, p]) => `• <@${id}>: ${p.bombs}${p.bombs >= 2 ? ' 💀' : ''}`).join('\n'), inline: false },
-                { name: '📝 Used words', value: game.usedWords.length > 0 ? game.usedWords.slice(-5).join(', ') : '*None yet*', inline: false }
-            )
-            .setFooter({ text: `Players: ${game.players.size} | Used words: ${game.usedWords.length}` })
-            .setTimestamp();
-
-        await message.edit({ embeds: [embed], components: [] });
-
-        if (game.timer) {
-            clearTimeout(game.timer);
-            game.timer = null;
-        }
-        
-        game.timer = setTimeout(async () => {
-            if (game.active) await handleWordBombTimeout(message, game);
-        }, 10000);
-    } catch (err) {
-        console.error('Error in startWordBombRound:', err.message);
-    }
-}
-
-async function handleWordBombTimeout(message, game) {
-    try {
-        if (!game?.active) return;
-        
-        const currentPlayerId = game.currentTurn;
-        const player = game.players.get(currentPlayerId);
-
-        if (!player) return;
-
-        player.bombs++;
-
-        const embed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('⏰ Time\'s up!')
-            .setDescription(`**<@${currentPlayerId}>** didn't respond in time!\n💣 Gets a bomb!`)
-            .setTimestamp();
-
-        await message.edit({ embeds: [embed], components: [] });
-
-        if (player.bombs >= 3) {
-            game.players.delete(currentPlayerId);
-
-            const elimEmbed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle('☠️ Eliminated!')
-                .setDescription(`**<@${currentPlayerId}>** got 3 bombs and is out of the game!`)
-                .setTimestamp();
-
-            await message.edit({ embeds: [elimEmbed], components: [] });
-
-            await WordBomb.findOneAndUpdate(
-                { messageId: message.id },
-                { $pull: { players: { userId: currentPlayerId } } }
-            );
-
-            if (game.players.size === 1) {
-                const winnerId = Array.from(game.players.keys())[0];
-                const winner = game.players.get(winnerId);
-
-                setTimeout(async () => {
-                    const winEmbed = new EmbedBuilder()
-                        .setColor(0xFFD700)
-                        .setTitle('🏆 Word Bomb - WINNER!')
-                        .setDescription(`**🎉 <@${winnerId}> wins Word Bomb!**\n\nFinal Bombs: **${winner.bombs}**\nWords Guessed: **${winner.wordsGuessed}**`)
-                        .setTimestamp();
-
-                    await message.edit({
-                        content: `🏆 **<@${winnerId}>** WINS WORD BOMB!`,
-                        embeds: [winEmbed],
-                        components: []
-                    });
-
-                    game.active = false;
-                    activeWordBombs.delete(message.id);
-                    await WordBomb.findOneAndUpdate({ messageId: message.id }, { active: false, winner: winnerId });
-                }, 2000);
-                return;
-            }
-
-            const newTheme = WORD_BOMB_THEMES[Math.floor(Math.random() * WORD_BOMB_THEMES.length)];
-            game.theme = newTheme.name;
-            game.usedWords = [];
-        }
-
-        const playerIds = Array.from(game.players.keys());
-        const currentIndex = playerIds.indexOf(currentPlayerId);
-        const nextIndex = (currentIndex + 1) % playerIds.length;
-        game.currentTurn = playerIds[nextIndex];
-
-        await WordBomb.findOneAndUpdate(
-            { messageId: message.id },
-            {
-                theme: game.theme,
-                usedWords: game.usedWords,
-                currentTurn: game.currentTurn
-            }
-        );
-
-        setTimeout(() => {
-            if (game.players.size > 1 && game.active) {
-                startWordBombRound(message, game);
-            }
-        }, 3000);
-    } catch (err) {
-        console.error('Error in handleWordBombTimeout:', err.message);
-    }
-}
-
-async function handleWordBombWord(message, game, userId, word) {
-    try {
-        if (!game?.active) {
-            console.log('⚠️ Word Bomb not active');
-            return false;
-        }
-
-        const player = game.players.get(userId);
-        if (!player) {
-            console.log('⚠️ Player not found:', userId);
-            return false;
-        }
-
-        console.log('📝 Processing word:', word, 'from:', userId);
-        console.log('Current turn:', game.currentTurn, 'Used words:', game.usedWords);
-
-        const lowerWord = word.toLowerCase().trim();
-
-        // Проверка на повтор
-        const isRepeat = game.usedWords.some(w => w.toLowerCase() === lowerWord);
-        console.log('Is repeat:', isRepeat);
-
-        if (isRepeat) {
-            player.bombs++;
-            console.log('💣 Repeat! Bombs:', player.bombs);
-
-            const repeatEmbed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle('❌ Repeated word!')
-                .setDescription(`**<@${userId}>** used "**${word}**" which was already used!\n💣 Gets a bomb!`)
-                .setTimestamp();
-
-            await message.edit({ embeds: [repeatEmbed], components: [] });
-
-            if (player.bombs >= 3) {
-                console.log('☠️ Player eliminated:', userId);
-                game.players.delete(userId);
-
-                const elimEmbed = new EmbedBuilder()
-                    .setColor(0xFF0000)
-                    .setTitle('☠️ Eliminated!')
-                    .setDescription(`**<@${userId}>** got 3 bombs and is out of the game!`)
-                    .setTimestamp();
-
-                await message.edit({ embeds: [elimEmbed], components: [] });
-
-                await WordBomb.findOneAndUpdate(
-                    { messageId: message.id },
-                    { $pull: { players: { userId } } }
-                );
-
-                if (game.players.size === 1) {
-                    const winnerId = Array.from(game.players.keys())[0];
-                    const winner = game.players.get(winnerId);
-
-                    setTimeout(async () => {
-                        const winEmbed = new EmbedBuilder()
-                            .setColor(0xFFD700)
-                            .setTitle('🏆 Word Bomb - WINNER!')
-                            .setDescription(`**🎉 <@${winnerId}> wins Word Bomb!**\n\nFinal Bombs: **${winner.bombs}**\nWords Guessed: **${winner.wordsGuessed}**`)
-                            .setTimestamp();
-
-                        await message.edit({
-                            content: `🏆 **<@${winnerId}>** WINS WORD BOMB!`,
-                            embeds: [winEmbed],
-                            components: []
-                        });
-
-                        game.active = false;
-                        activeWordBombs.delete(message.id);
-                        await WordBomb.findOneAndUpdate({ messageId: message.id }, { active: false, winner: winnerId });
-                    }, 2000);
-                    return true;
-                }
-            }
-
-            // Передаём ход следующему
-            const playerIds = Array.from(game.players.keys());
-            const currentIndex = playerIds.indexOf(userId);
-            const nextIndex = (currentIndex + 1) % playerIds.length;
-            game.currentTurn = playerIds[nextIndex];
-            console.log('➡️ Next turn:', game.currentTurn);
-
-            await WordBomb.findOneAndUpdate(
-                { messageId: message.id },
-                { currentTurn: game.currentTurn }
-            );
-
-            return true;
-        }
-
-        // Слово принято
-        player.wordsGuessed++;
-        game.usedWords.push(word);
-        console.log('✅ Word accepted! Total words:', game.usedWords.length);
-
-        const acceptEmbed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('✅ Good!')
-            .setDescription(`**<@${userId}>**: "**${word}**" - Accepted!`)
-            .setFooter({ text: `Used words: ${game.usedWords.length}` })
-            .setTimestamp();
-
-        await message.edit({ embeds: [acceptEmbed], components: [] });
-
-        // Передаём ход следующему
-        const playerIds = Array.from(game.players.keys());
-        const currentIndex = playerIds.indexOf(userId);
-        const nextIndex = (currentIndex + 1) % playerIds.length;
-        game.currentTurn = playerIds[nextIndex];
-        console.log('➡️ Next turn:', game.currentTurn);
-
-        await WordBomb.findOneAndUpdate(
-            { messageId: message.id },
-            {
-                usedWords: game.usedWords,
-                currentTurn: game.currentTurn
-            }
-        );
-
-        return true;
-    } catch (err) {
-        console.error('❌ Error in handleWordBombWord:', err.message);
-        return false;
-    }
-}
-
-// ────────────────────────────────────────────────
 // Button Interaction Handler
 // ────────────────────────────────────────────────
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -2138,7 +1656,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     try {
         // HILO JOIN/LEAVE - обрабатывается в коллекторе команды hilo
-        if (['hilo_join', 'hilo_leave', 'wordbomb_join', 'wordbomb_leave'].includes(customId)) {
+        if (['hilo_join', 'hilo_leave'].includes(customId)) {
             return interaction.deferUpdate().catch(() => {});
         }
 
@@ -2251,70 +1769,15 @@ client.on(Events.MessageDelete, async (message) => {
         activeTicTacToe.delete(message.id);
         activeBattles.delete(message.id);
         activeHiLo.delete(message.id);
-        activeWordBombs.delete(message.id);
-        
+
         await Promise.all([
             Event.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error),
             TicTacToe.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error),
             Battle.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error),
-            HiLo.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error),
-            WordBomb.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error)
+            HiLo.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error)
         ]);
     } catch (err) {
         console.error('Error in MessageDelete:', err.message);
-    }
-});
-
-// ────────────────────────────────────────────────
-// Word Bomb Message Handler
-// ────────────────────────────────────────────────
-client.on(Events.MessageCreate, async (message) => {
-    if (message.author.bot || !message.guild) return;
-    if (message.content.startsWith('-')) return;
-
-    try {
-        if (activeWordBombs.size === 0) return;
-
-        for (const [msgId, game] of activeWordBombs.entries()) {
-            if (!game?.active) continue;
-            
-            // Проверяем что игрок в игре и сейчас его ход
-            if (!game.players.has(message.author.id)) continue;
-            if (game.currentTurn !== message.author.id) continue;
-            
-            const word = message.content.trim();
-
-            if (word.length > 0) {
-                console.log('💣 Word Bomb word:', word, 'by', message.author.tag);
-                
-                if (game.timer) {
-                    clearTimeout(game.timer);
-                    game.timer = null;
-                }
-
-                const result = await handleWordBombWord(message, game, message.author.id, word);
-                
-                if (result) {
-                    console.log('✅ Word accepted');
-                }
-
-                try {
-                    if (message.deletable) {
-                        await message.delete();
-                    }
-                } catch (e) {}
-
-                if (game.players.size > 1 && game.active) {
-                    setTimeout(() => {
-                        const freshGame = activeWordBombs.get(msgId);
-                        if (freshGame?.active) startWordBombRound(message, freshGame);
-                    }, 2000);
-                }
-            }
-            break;
-        }
-    } catch (err) {
-        console.error('Error in Word Bomb MessageCreate:', err.message);
     }
 });
 
