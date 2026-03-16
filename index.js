@@ -952,7 +952,7 @@ if (cmd === 'hilo') {
             )
             .setFooter({ text: 'Click "Join" or "Leave" before game starts!' })
             .setTimestamp(startTime * 1000);
-        try { await msg.edit({ embeds: [newEmbed] }); } catch (e) {}
+        await msg.edit({ embeds: [newEmbed] }).catch(console.error);
     }
 
     const collector = msg.createMessageComponentCollector({
@@ -965,8 +965,9 @@ if (cmd === 'hilo') {
             if (!players.has(interaction.user.id)) {
                 players.set(interaction.user.id, { score: 0, highScore: 0, currentNumber: startNumber });
                 console.log('📈 Player joined:', interaction.user.tag, 'Total:', players.size);
-                await interaction.reply({ content: '✅ You joined HILO! Good luck! 🍀', ephemeral: true });
+                // Сначала обновляем эмбед, потом отвечаем
                 await updatePlayersEmbed();
+                await interaction.reply({ content: '✅ You joined HILO! Good luck! 🍀', ephemeral: true });
             } else {
                 await interaction.reply({ content: '⚠️ You are already in this game!', ephemeral: true });
             }
@@ -977,8 +978,9 @@ if (cmd === 'hilo') {
             if (players.has(interaction.user.id)) {
                 players.delete(interaction.user.id);
                 console.log('📈 Player left:', interaction.user.tag, 'Total:', players.size);
-                await interaction.reply({ content: '🚪 You left HILO!', ephemeral: true });
+                // Сначала обновляем эмбед, потом отвечаем
                 await updatePlayersEmbed();
+                await interaction.reply({ content: '🚪 You left HILO!', ephemeral: true });
             } else {
                 await interaction.reply({ content: '❌ You are not in this game!', ephemeral: true });
             }
