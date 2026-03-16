@@ -1035,8 +1035,8 @@ if (cmd === 'hilo') {
             _id: msg.id,
             host: message.author.id,
             players: new Map(players),  // ✅ Map
-            currentTurn: Array.from(players.keys())[0],
             currentNumber: startNumber,
+            votes: new Map(),  // ✅ Голоса игроков
             active: true
         });
         console.log('✅ HILO added to cache. Players:', players.size);
@@ -1429,76 +1429,58 @@ async function startBattleRound(message, battle) {
 }
 
 // ────────────────────────────────────────────────
-// HILO Functions 🔥 FIX — Вход + Победа
+// HILO Functions 🔥 SIMULTANEOUS MODE
 // ────────────────────────────────────────────────
 async function startHiloRound(message, game) {
     try {
-        // ✅ Проверки активности
-        if (!game || !game.active) {
+        if (!game?.active || !activeHiLo.has(message.id)) {
             console.log('⚠️ HILO not active, skipping round');
             return;
         }
-        
-        if (!activeHiLo.has(message.id)) {
-            console.log('⚠️ HILO not in cache, skipping round');
-            return;
-        }
-        
-        const currentPlayerId = game.currentTurn;
-        const player = game.players.get(currentPlayerId);
-        const currentNumber = game.currentNumber;
 
-        console.log('📈 HILO Round - Current player:', currentPlayerId, 'Number:', currentNumber, 'Players left:', game.players.size);
-
-        // ✅ Проверка: игрок всё ещё в игре?
-        if (!player) {
-            const playerIds = Array.from(game.players.keys());
-            if (playerIds.length === 0) {
-                console.log('❌ HILO - No players left!');
-                game.active = false;
-                activeHiLo.delete(message.id);
-                await HiLo.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error);
-                return;
-            }
-            game.currentTurn = playerIds[0];
-            return startHiloRound(message, game);
-        }
-
-        // ✅ Проверка победителя (остался 1 игрок)
+        // Проверка победителя (остался 1 игрок)
         if (game.players.size === 1) {
-            console.log('🏆 HILO Winner detected!');
             const winnerId = Array.from(game.players.keys())[0];
             const winner = game.players.get(winnerId);
-            
+
             game.active = false;
             activeHiLo.delete(message.id);
-            
+
             const winEmbed = new EmbedBuilder()
                 .setColor(0xFFD700)
                 .setTitle('🏆 HILO - WINNER!')
                 .setDescription(`**🎉 <@${winnerId}> wins the game!**\n\nFinal High Score: **${winner.highScore}**`)
                 .setTimestamp();
 
-            try {
-                await message.edit({
-                    content: `🏆 **<@${winnerId}>** WINS HILO!`,
-                    embeds: [winEmbed],
-                    components: []
-                });
-                console.log('✅ HILO winner announced');
-            } catch (err) {
-                console.error('❌ Failed to announce HILO winner:', err.message);
-            }
-            
-            await HiLo.findOneAndUpdate({ messageId: message.id }, { active: false }).catch(console.error);
+            await message.edit({
+                content: `🏆 **<@${winnerId}>** WINS HILO!`,
+                embeds: [winEmbed],
+                components: []
+            });
+
+            await HiLo.findOneAndUpdate({ messageId: message.id }, { active: false });
             return;
         }
+
+        // Проверка - если игроков 0
+        if (game.players.size === 0) {
+            game.active = false;
+            activeHiLo.delete(message.id);
+            await message.edit({
+                content: '❌ HILO - No players left!',
+                embeds: [],
+                components: []
+            });
+            return;
+        }
+
+        const currentNumber = game.currentNumber;
 
         const embed = new EmbedBuilder()
             .setColor(0x00AE86)
             .setTitle('📈 HILO')
-            .setDescription(`**<@${currentPlayerId}>'s turn!**\n\nCurrent number: **${currentNumber}**\n\nGuess if the next number will be higher or lower!`)
-            .setFooter({ text: `Score: ${player.score} | High Score: ${player.highScore} | Players: ${game.players.size}` })
+            .setDescription(`**All players guess simultaneously!**\n\nCurrent number: **${currentNumber}**\n\nYou have **15 seconds** to vote!`)
+            .setFooter({ text: `Players: ${game.players.size}` })
             .setTimestamp();
 
         const row = new ActionRowBuilder()
@@ -1516,135 +1498,94 @@ async function startHiloRound(message, game) {
             );
 
         await message.edit({ embeds: [embed], components: [row] });
-        console.log('✅ HILO round message edited');
+        console.log('📈 HILO Round started, waiting for votes...');
+
+        // Ждём 15 секунд на голосование
+        setTimeout(async () => {
+            await processHiloVotes(message, game);
+        }, 15000);
     } catch (err) {
-        console.error('❌ Error in startHiloRound:', err.message);
+        console.error('Error in startHiloRound:', err.message);
     }
 }
 
-async function processHiloGuess(interaction, game, isHigher) {
+async function processHiloVotes(message, game) {
     try {
-        if (!game || !game.active) {
-            console.log('⚠️ HILO not active, ignoring guess');
+        if (!game?.active) return;
+
+        const currentNumber = game.currentNumber;
+        const newNumber = Math.floor(Math.random() * 100) + 1;
+        const eliminated = [];
+        const survivors = [];
+
+        // Проверяем всех игроков
+        for (const [userId, guess] of game.votes.entries()) {
+            const player = game.players.get(userId);
+            if (!player) continue;
+
+            const isHigher = guess === 'higher';
+            let correct = false;
+
+            if (isHigher && newNumber > currentNumber) correct = true;
+            if (!isHigher && newNumber < currentNumber) correct = true;
+
+            if (correct) {
+                player.highScore++;
+                survivors.push(`<@${userId}>`);
+            } else {
+                eliminated.push(`<@${userId}>`);
+                game.players.delete(userId);
+            }
+        }
+
+        // Если никто не голосовал - все выбывают
+        if (game.votes.size === 0) {
+            for (const userId of game.players.keys()) {
+                eliminated.push(`<@${userId}>`);
+            }
+            game.players.clear();
+        }
+
+        const resultEmbed = new EmbedBuilder()
+            .setColor(0x00AE86)
+            .setTitle('📈 HILO - Results')
+            .setDescription(`**Old number: ${currentNumber}**\n**New number: ${newNumber}**\n\n${newNumber > currentNumber ? '⬆️ Higher won!' : newNumber < currentNumber ? '⬇️ Lower won!' : '➡️ Same number!'}`)
+            .addFields(
+                { name: `✅ Survivors (${survivors.length})`, value: survivors.length > 0 ? survivors.join('\n') : 'None', inline: true },
+                { name: `❌ Eliminated (${eliminated.length})`, value: eliminated.length > 0 ? eliminated.join('\n') : 'None', inline: true }
+            )
+            .setFooter({ text: `Remaining players: ${game.players.size}` })
+            .setTimestamp();
+
+        await message.edit({ embeds: [resultEmbed], components: [] });
+        console.log(`📈 HILO Results - Survivors: ${survivors.length}, Eliminated: ${eliminated.length}`);
+
+        // Очищаем голоса
+        game.votes.clear();
+
+        // Проверка победителя
+        if (game.players.size <= 1) {
+            setTimeout(async () => {
+                await startHiloRound(message, game);
+            }, 3000);
             return;
         }
 
-        const userId = interaction.user.id;
-        const player = game.players.get(userId);
-        const currentNumber = game.currentNumber;
-        const newNumber = Math.floor(Math.random() * 100) + 1;
+        // Новый раунд
+        game.currentNumber = newNumber;
 
-        console.log('📈 HILO Guess - User:', userId, 'Guess:', isHigher ? 'Higher' : 'Lower', 'Current:', currentNumber, 'New:', newNumber);
+        await HiLo.findOneAndUpdate(
+            { messageId: message.id },
+            { currentNumber: newNumber }
+        );
 
-        let correct = false;
-        if (isHigher && newNumber > currentNumber) correct = true;
-        if (!isHigher && newNumber < currentNumber) correct = true;
-
-        if (correct) {
-            player.score++;
-            if (player.score > player.highScore) {
-                player.highScore = player.score;
+        setTimeout(async () => {
+            if (game.active && game.players.size > 1) {
+                await startHiloRound(message, game);
             }
-            player.currentNumber = newNumber;
-
-            await HiLo.findOneAndUpdate(
-                { messageId: interaction.message.id, 'players.userId': userId },
-                {
-                    $set: {
-                        'players.$.score': player.score,
-                        'players.$.highScore': player.highScore,
-                        'players.$.currentNumber': newNumber
-                    }
-                }
-            );
-
-            const embed = new EmbedBuilder()
-                .setColor(0x00AE86)
-                .setTitle('📈 HILO')
-                .setDescription(`**✅ Correct!**\n\nOld number: **${currentNumber}**\nNew number: **${newNumber}**\n\nYour streak continues!`)
-                .setFooter({ text: `Score: ${player.score} | High Score: ${player.highScore}` })
-                .setTimestamp();
-
-            await interaction.update({ embeds: [embed], components: [] });
-
-            game.currentNumber = newNumber;
-
-            // 🔥 Передаём ход следующему игроку
-            const playerIds = Array.from(game.players.keys());
-            const currentIndex = playerIds.indexOf(userId);
-            const nextIndex = (currentIndex + 1) % playerIds.length;
-            game.currentTurn = playerIds[nextIndex];
-
-            await HiLo.findOneAndUpdate(
-                { messageId: interaction.message.id },
-                { currentTurn: game.currentTurn }
-            );
-
-            setTimeout(async () => {
-                if (game.active) await startHiloRound(interaction.message, game);
-            }, 2000);
-        } else {
-            console.log('❌ HILO - Player eliminated:', userId);
-            game.players.delete(userId);
-
-            await HiLo.findOneAndUpdate(
-                { messageId: interaction.message.id },
-                { $pull: { players: { userId } } }
-            );
-
-            const embed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle('📈 HILO')
-                .setDescription(`**❌ Wrong!**\n\nOld number: **${currentNumber}**\nNew number: **${newNumber}**\n\n<@${userId}> is eliminated!`)
-                .setFooter({ text: `Final High Score: ${player.highScore}` })
-                .setTimestamp();
-
-            await interaction.update({ embeds: [embed], components: [] });
-
-            // ✅ ПРОВЕРКА ПОБЕДИТЕЛЯ — сразу после выбывания
-            if (game.players.size === 1) {
-                console.log('🏆 HILO Winner detected after elimination!');
-                const winnerId = Array.from(game.players.keys())[0];
-                const winner = game.players.get(winnerId);
-
-                setTimeout(async () => {
-                    const winEmbed = new EmbedBuilder()
-                        .setColor(0xFFD700)
-                        .setTitle('🏆 HILO - WINNER!')
-                        .setDescription(`**🎉 <@${winnerId}> wins the game!**\n\nFinal High Score: **${winner.highScore}**`)
-                        .setTimestamp();
-
-                    try {
-                        await interaction.message.edit({
-                            content: `🏆 **<@${winnerId}>** WINS HILO!`,
-                            embeds: [winEmbed],
-                            components: []
-                        });
-                        console.log('✅ HILO winner announced');
-                    } catch (err) {
-                        console.error('❌ Failed to announce HILO winner:', err.message);
-                    }
-
-                    game.active = false;
-                    activeHiLo.delete(interaction.message.id);
-                    await HiLo.findOneAndUpdate({ messageId: interaction.message.id }, { active: false });
-                }, 2000);
-                return;
-            }
-
-            // ✅ Передаём ход следующему игроку
-            const playerIds = Array.from(game.players.keys());
-            const currentIndex = playerIds.indexOf(userId);
-            const nextIndex = currentIndex >= playerIds.length - 1 ? 0 : currentIndex + 1;
-            game.currentTurn = playerIds[nextIndex] || playerIds[0];
-            game.currentNumber = newNumber;
-
-            setTimeout(async () => {
-                if (game.active) await startHiloRound(interaction.message, game);
-            }, 2000);
-        }
+        }, 3000);
     } catch (err) {
-        console.error('❌ Error in processHiloGuess:', err.message);
+        console.error('Error in processHiloVotes:', err.message);
     }
 }
 
@@ -1666,12 +1607,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
             const game = activeHiLo.get(interaction.message.id);
             if (!game || !game.active) return;
 
-            if (game.currentTurn !== interaction.user.id) {
-                return interaction.reply({ content: '❌ Not your turn!', ephemeral: true });
-            }
+            // Сохраняем голос игрока
+            const vote = customId === 'hilo_higher' ? 'higher' : 'lower';
+            game.votes.set(interaction.user.id, vote);
 
-            const isHigher = customId === 'hilo_higher';
-            await processHiloGuess(interaction, game, isHigher);
+            await interaction.reply({
+                content: `✅ Voted: **${vote === 'higher' ? '⬆️ Higher' : '⬇️ Lower'}**`,
+                ephemeral: true
+            });
             return;
         }
 
