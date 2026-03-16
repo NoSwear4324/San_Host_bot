@@ -1839,7 +1839,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
         // 🔥 TTT LOBBY BUTTONS
         if (customId === 'ttt_join_lobby') {
+            console.log('🎮 TTT Join Lobby button clicked by:', interaction.user.tag);
+            
             const lobby = activeTTTLobbies.get(interaction.message.id);
+            console.log('Lobby found:', !!lobby, 'Active:', lobby?.active, 'Creator:', lobby?.creatorId);
+            
             if (!lobby || !lobby.active) {
                 return interaction.reply({ content: '❌ This lobby is no longer active!', ephemeral: true });
             }
@@ -1847,11 +1851,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 return interaction.reply({ content: '❌ You cannot join your own lobby!', ephemeral: true });
             }
             
+            console.log('Starting TTT game:', lobby.creatorId, 'vs', interaction.user.id);
+            
             // Начинаем игру
             await startTTTGame(interaction, lobby.creatorId, interaction.user.id, interaction.message.id, lobby.channelId);
             
             // Удаляем лобби
             activeTTTLobbies.delete(interaction.message.id);
+            console.log('Lobby deleted, game started!');
             
             // Помечаем лобби как начатую игру
             try {
@@ -1863,7 +1870,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
                         .setTimestamp()],
                     components: []
                 });
-            } catch (e) {}
+            } catch (e) {
+                console.error('Failed to edit lobby message:', e.message);
+            }
             
             return;
         }
