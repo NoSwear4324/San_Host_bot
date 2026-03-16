@@ -828,7 +828,9 @@ client.on(Events.MessageCreate, async (message) => {
                 console.log('✅ TTT created in database');
             } catch (err) {
                 console.error('❌ Failed to create TTT in DB:', err.message);
-                await interaction.reply({ content: '❌ Failed to start game!', ephemeral: true });
+                if (interaction.isButton()) {
+                    await interaction.reply({ content: '❌ Failed to start game!', ephemeral: true });
+                }
                 return;
             }
 
@@ -841,14 +843,30 @@ client.on(Events.MessageCreate, async (message) => {
                 winner: null
             });
 
-            // Отправляем НОВОЕ сообщение с игрой (не редактируем лобби!)
-            await interaction.channel.send({
+            // Отправляем НОВОЕ сообщение с игрой
+            const gameMessage = await interaction.channel.send({
                 content: `🎮 **Game Started!** <@${playerXId}> vs <@${playerOId}>`,
                 embeds: [gameEmbed],
                 components: [row1, row2, row3]
             });
 
-            // Если это кнопка - подтверждаем взаимодействие
+            // Обновляем messageId в кэше и БД на новый
+            activeTicTacToe.delete(messageId);
+            activeTicTacToe.set(gameMessage.id, {
+                _id: gameMessage.id,
+                playerX: playerXId,
+                playerO: playerOId,
+                currentTurn: playerXId,
+                board,
+                winner: null
+            });
+            
+            await TicTacToe.findOneAndUpdate(
+                { messageId: messageId },
+                { messageId: gameMessage.id }
+            );
+
+            // Если это кнопка - подтверждаем
             if (interaction.isButton()) {
                 await interaction.deferUpdate().catch(() => {});
             }
@@ -1819,6 +1837,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const customId = interaction.customId;
 
     try {
+        // 🔥 TTT LOBBY BUTTONS
+        if (customId === 'ttt_join_lobby') {
+            const lobby = activeTTTLobbies.get(interaction.message.id);
+            if (!lobby || !lobby.active) {
+                return interaction.reply({ content: '❌ This lobby is no longer active!', ephemeral: true });
+            }
+            if (lobby.creatorId === interaction.user.id) {
+                return interaction.reply({ content: '❌ You cannot join your own lobby!', ephemeral: true });
+            }
+            
+            // Начинаем игру
+            await startTTTGame(interaction, lobby.creatorId, interaction.user.id, interaction.message.id, lobby.channelId);
+            
+            // Удаляем лобби
+            activeTTTLobbies.delete(interaction.message.id);
+            
+            // Помечаем лобби как начатую игру
+            try {
+                await interaction.message.edit({
+                    embeds: [new EmbedBuilder()
+                        .setColor(0x00FF00)
+                        .setTitle('⭕ Game Started!')
+                        .setDescription(`**<@${lobby.creatorId}>** vs **<@${interaction.user.id}>**\n\nGame in progress below! 👇`)
+                        .setTimestamp()],
+                    components: []
+                });
+            } catch (e) {}
+            
+            return;
+        }
+        
+        if (customId === 'ttt_create_lobby') {
+            await interaction.reply({ content: 'Type `-ttt` to create a new lobby!', ephemeral: true });
+            return;
+        }
+
         // HILO JOIN/LEAVE - обрабатывается в коллекторе команды hilo
         if (['hilo_join', 'hilo_leave'].includes(customId)) {
             return interaction.deferUpdate().catch(() => {});
