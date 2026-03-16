@@ -831,10 +831,7 @@ client.on(Events.MessageCreate, async (message) => {
                 console.log('✅ TTT created in database');
             } catch (err) {
                 console.error('❌ Failed to create TTT in DB:', err.message);
-                if (interaction.isButton()) {
-                    await interaction.reply({ content: '❌ Failed to start game!', ephemeral: true });
-                }
-                return;
+                throw err;
             }
 
             activeTicTacToe.set(messageId, {
@@ -846,11 +843,12 @@ client.on(Events.MessageCreate, async (message) => {
                 winner: null
             });
 
-            // Отправляем НОВОЕ сообщение с игрой
-            const gameMessage = await interaction.channel.send({
+            // Отправляем НОВОЕ сообщение с игрой через followUp
+            const gameMessage = await interaction.followUp({
                 content: `🎮 **Game Started!** <@${playerXId}> vs <@${playerOId}>`,
                 embeds: [gameEmbed],
-                components: [row1, row2, row3]
+                components: [row1, row2, row3],
+                fetchReply: true
             });
 
             // Обновляем messageId в кэше и БД на новый
@@ -863,16 +861,13 @@ client.on(Events.MessageCreate, async (message) => {
                 board,
                 winner: null
             });
-            
+
             await TicTacToe.findOneAndUpdate(
                 { messageId: messageId },
                 { messageId: gameMessage.id }
             );
 
-            // Если это кнопка - подтверждаем
-            if (interaction.isButton()) {
-                await interaction.deferUpdate().catch(() => {});
-            }
+            console.log('✅ Game message sent:', gameMessage.id);
         }
         // ────────────────────────────────────────────────
         // BATTLE COMMAND 🔥 FIX — Вход работает
