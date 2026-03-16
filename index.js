@@ -1501,8 +1501,10 @@ async function startHiloRound(message, game) {
         console.log('📈 HILO Round started, waiting for votes...');
 
         // Ждём 15 секунд на голосование
-        setTimeout(async () => {
-            await processHiloVotes(message, game);
+        game.timer = setTimeout(async () => {
+            if (game.active && game.players.size > 1) {
+                await processHiloVotes(message, game);
+            }
         }, 15000);
     } catch (err) {
         console.error('Error in startHiloRound:', err.message);
@@ -1511,12 +1513,17 @@ async function startHiloRound(message, game) {
 
 async function processHiloVotes(message, game) {
     try {
-        if (!game?.active) return;
+        if (!game?.active) {
+            console.log('⚠️ HILO processHiloVotes - game not active');
+            return;
+        }
 
         const currentNumber = game.currentNumber;
         const newNumber = Math.floor(Math.random() * 100) + 1;
         const eliminated = [];
         const survivors = [];
+
+        console.log(`📈 Processing votes: ${game.votes.size} votes from ${game.players.size} players`);
 
         // Проверяем всех игроков
         for (const [userId, guess] of game.votes.entries()) {
@@ -1565,8 +1572,11 @@ async function processHiloVotes(message, game) {
 
         // Проверка победителя
         if (game.players.size <= 1) {
+            console.log(`📈 HILO - Game over, ${game.players.size} players left`);
             setTimeout(async () => {
-                await startHiloRound(message, game);
+                if (game.active) {
+                    await startHiloRound(message, game);
+                }
             }, 3000);
             return;
         }
@@ -1579,13 +1589,16 @@ async function processHiloVotes(message, game) {
             { currentNumber: newNumber }
         );
 
+        // Запускаем следующий раунд только если игра активна
         setTimeout(async () => {
             if (game.active && game.players.size > 1) {
                 await startHiloRound(message, game);
+            } else {
+                console.log('⚠️ HILO - Skipping round, game ended or not enough players');
             }
         }, 3000);
     } catch (err) {
-        console.error('Error in processHiloVotes:', err.message);
+        console.error('❌ Error in processHiloVotes:', err.message);
     }
 }
 
@@ -1606,6 +1619,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (customId === 'hilo_higher' || customId === 'hilo_lower') {
             const game = activeHiLo.get(interaction.message.id);
             if (!game || !game.active) return;
+
+            // Проверяем что игрок всё ещё в игре
+            if (!game.players.has(interaction.user.id)) {
+                return interaction.reply({ content: '❌ You are eliminated! You cannot vote.', ephemeral: true });
+            }
 
             // Сохраняем голос игрока
             const vote = customId === 'hilo_higher' ? 'higher' : 'lower';
