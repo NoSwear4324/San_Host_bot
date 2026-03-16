@@ -660,74 +660,77 @@ client.on(Events.MessageCreate, async (message) => {
             }
             
             // 🔥 ЛОББИ - поиск оппонента
-            // Проверяем есть ли активное лобби
-            for (const [lobbyId, lobby] of activeTTTLobbies.entries()) {
-                if (lobby.active && lobby.creatorId !== message.author.id) {
-                    // Есть активное лобби от другого игрока
-                    const embed = new EmbedBuilder()
-                        .setColor(0x5865F2)
-                        .setTitle('⭕ Tic-Tac-Toe Lobby Exists!')
-                        .setDescription(`**<@${lobby.creatorId}>** is waiting for an opponent!\n\nDo you want to join?`)
-                        .setFooter({ text: 'Or create your own lobby with -ttt' })
-                        .setTimestamp();
+            // Проверяем есть ли активные лобби
+            const activeLobbies = Array.from(activeTTTLobbies.entries())
+                .filter(([id, lobby]) => lobby.active && lobby.creatorId !== message.author.id);
+            
+            if (activeLobbies.length > 0) {
+                // Есть активные лобби от других игроков
+                const [lobbyId, lobby] = activeLobbies[0]; // Берём первое
+                
+                const embed = new EmbedBuilder()
+                    .setColor(0x5865F2)
+                    .setTitle('⭕ Tic-Tac-Toe Lobby Exists!')
+                    .setDescription(`**<@${lobby.creatorId}>** is waiting for an opponent!\n\nDo you want to join?`)
+                    .setFooter({ text: `${activeLobbies.length - 1} more lobbies available | Or create your own with -ttt` })
+                    .setTimestamp();
 
-                    const row = new ActionRowBuilder()
-                        .addComponents(
-                            new ButtonBuilder()
-                                .setCustomId('ttt_join_lobby')
-                                .setLabel('Join Existing Lobby')
-                                .setStyle(ButtonStyle.Success)
-                                .setEmoji('✅'),
-                            new ButtonBuilder()
-                                .setCustomId('ttt_create_lobby')
-                                .setLabel('Create New Lobby')
-                                .setStyle(ButtonStyle.Secondary)
-                                .setEmoji('🆕')
-                        );
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('ttt_join_lobby')
+                            .setLabel('Join Existing Lobby')
+                            .setStyle(ButtonStyle.Success)
+                            .setEmoji('✅'),
+                        new ButtonBuilder()
+                            .setCustomId('ttt_create_lobby')
+                            .setLabel('Create New Lobby')
+                            .setStyle(ButtonStyle.Secondary)
+                            .setEmoji('🆕')
+                    );
 
-                    const msg = await message.channel.send({ 
-                        embeds: [embed], 
-                        components: [row], 
-                        reply: { messageReference: lobbyId } 
-                    });
-                    
-                    const collector = msg.createMessageComponentCollector({
-                        filter: i => ['ttt_join_lobby', 'ttt_create_lobby'].includes(i.customId) && !i.user.bot,
-                        time: 30000
-                    });
+                const msg = await message.channel.send({ 
+                    embeds: [embed], 
+                    components: [row], 
+                    reply: { messageReference: lobbyId } 
+                });
+                
+                const collector = msg.createMessageComponentCollector({
+                    filter: i => ['ttt_join_lobby', 'ttt_create_lobby'].includes(i.customId) && !i.user.bot,
+                    time: 30000
+                });
 
-                    collector.on('collect', async (interaction) => {
-                        if (interaction.customId === 'ttt_join_lobby') {
-                            // Присоединиться к существующему лобби
-                            await startTTTGame(interaction, lobby.creatorId, interaction.user.id, lobbyId, lobby.channelId);
-                            activeTTTLobbies.delete(lobbyId);
-                            await msg.delete().catch(() => {});
-                            // Удаляем лобби сообщение
-                            try {
-                                const lobbyMsg = await interaction.channel.messages.fetch(lobbyId);
-                                await lobbyMsg.edit({
-                                    embeds: [new EmbedBuilder()
-                                        .setColor(0x00FF00)
-                                        .setTitle('⭕ Game Started!')
-                                        .setDescription(`**<@${lobby.creatorId}>** vs **<@${interaction.user.id}>**\n\nGame in progress...`)
-                                        .setTimestamp()],
-                                    components: []
-                                });
-                            } catch (e) {}
-                        }
-                        if (interaction.customId === 'ttt_create_lobby') {
-                            // Создать новое лобби
-                            await msg.delete().catch(() => {});
-                            await createTTTLobby(message);
-                        }
-                    });
+                collector.on('collect', async (interaction) => {
+                    if (interaction.customId === 'ttt_join_lobby') {
+                        // Присоединиться к существующему лобби
+                        await startTTTGame(interaction, lobby.creatorId, interaction.user.id, lobbyId, lobby.channelId);
+                        activeTTTLobbies.delete(lobbyId);
+                        await msg.delete().catch(() => {});
+                        // Удаляем лобби сообщение
+                        try {
+                            const lobbyMsg = await interaction.channel.messages.fetch(lobbyId);
+                            await lobbyMsg.edit({
+                                embeds: [new EmbedBuilder()
+                                    .setColor(0x00FF00)
+                                    .setTitle('⭕ Game Started!')
+                                    .setDescription(`**<@${lobby.creatorId}>** vs **<@${interaction.user.id}>**\n\nGame in progress...`)
+                                    .setTimestamp()],
+                                components: []
+                            });
+                        } catch (e) {}
+                    }
+                    if (interaction.customId === 'ttt_create_lobby') {
+                        // Создать новое лобби
+                        await msg.delete().catch(() => {});
+                        await createTTTLobby(message);
+                    }
+                });
 
-                    collector.on('end', () => {
-                        msg.delete().catch(() => {});
-                    });
+                collector.on('end', () => {
+                    msg.delete().catch(() => {});
+                });
 
-                    return;
-                }
+                return;
             }
             
             // Создаём новое лобби
@@ -1840,21 +1843,35 @@ client.on(Events.InteractionCreate, async (interaction) => {
         // 🔥 TTT LOBBY BUTTONS
         if (customId === 'ttt_join_lobby') {
             console.log('🎮 TTT Join Lobby button clicked by:', interaction.user.tag);
+            console.log('Message ID:', interaction.message.id);
             
             const lobby = activeTTTLobbies.get(interaction.message.id);
-            console.log('Lobby found:', !!lobby, 'Active:', lobby?.active, 'Creator:', lobby?.creatorId);
+            console.log('Lobby found:', !!lobby);
+            if (lobby) {
+                console.log('  - Active:', lobby.active);
+                console.log('  - Creator:', lobby.creatorId);
+                console.log('  - Channel:', lobby.channelId);
+            }
             
             if (!lobby || !lobby.active) {
+                console.log('❌ Lobby not found or not active');
                 return interaction.reply({ content: '❌ This lobby is no longer active!', ephemeral: true });
             }
             if (lobby.creatorId === interaction.user.id) {
+                console.log('❌ User tried to join own lobby');
                 return interaction.reply({ content: '❌ You cannot join your own lobby!', ephemeral: true });
             }
             
-            console.log('Starting TTT game:', lobby.creatorId, 'vs', interaction.user.id);
+            console.log('✅ Starting TTT game:', lobby.creatorId, 'vs', interaction.user.id);
             
             // Начинаем игру
-            await startTTTGame(interaction, lobby.creatorId, interaction.user.id, interaction.message.id, lobby.channelId);
+            try {
+                await startTTTGame(interaction, lobby.creatorId, interaction.user.id, interaction.message.id, lobby.channelId);
+                console.log('✅ Game started successfully');
+            } catch (err) {
+                console.error('❌ Failed to start game:', err.message);
+                return interaction.reply({ content: '❌ Failed to start game! Please try again.', ephemeral: true });
+            }
             
             // Удаляем лобби
             activeTTTLobbies.delete(interaction.message.id);
@@ -1870,6 +1887,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                         .setTimestamp()],
                     components: []
                 });
+                console.log('✅ Lobby message updated');
             } catch (e) {
                 console.error('Failed to edit lobby message:', e.message);
             }
