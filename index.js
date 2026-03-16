@@ -1015,12 +1015,14 @@ if (cmd === 'hilo') {
 
         // ✅ Создаём в БД
         try {
+            const firstPlayer = Array.from(players.keys())[0];
             await HiLo.create({
                 messageId: msg.id,
                 channelId: msg.channel.id,
                 host: message.author.id,
                 players: playersArray,
                 currentNumber: startNumber,
+                currentTurn: firstPlayer,  // ✅ Добавляем currentTurn
                 active: true
             });
             console.log('✅ HILO created in database');
