@@ -153,6 +153,8 @@ const activeHiLo = new Map();
 // ────────────────────────────────────────────────
 // Game Constants
 // ────────────────────────────────────────────────
+const OVERLAP_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
 const BATTLE_ITEMS = [
     { name: '🗡️ Sword', damage: 15, heal: 0 },
     { name: '🔫 Gun', damage: 20, heal: 0 },
