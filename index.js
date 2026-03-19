@@ -141,6 +141,7 @@ const PING_ROLES = {
 };
 
 const ADMIN_ROLES = ['1475552294203424880', '1475552827626619050'];
+const HOST_BLACKLIST_ROLE = '1482828757965340978'; // Replace with actual blacklist role ID
 
 // ────────────────────────────────────────────────
 // Cache
@@ -438,6 +439,11 @@ client.on(Events.MessageCreate, async (message) => {
 
             if (!message.member?.roles.cache.has(EVENT_ROLES[type])) {
                 return message.reply(`❌ You need the **${cfg.name}** role`);
+            }
+
+            // Check if user is blacklisted from hosting
+            if (message.member?.roles.cache.has(HOST_BLACKLIST_ROLE)) {
+                return message.reply(`❌ You are blacklisted from hosting events!`);
             }
 
             // Check overlap for this channel
