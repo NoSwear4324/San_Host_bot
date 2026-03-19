@@ -149,6 +149,7 @@ const activeEvents = new Map();
 const activeTicTacToe = new Map();
 const activeBattles = new Map();
 const activeHiLo = new Map();
+const overlapCooldowns = new Map();
 
 // ────────────────────────────────────────────────
 // Game Constants
