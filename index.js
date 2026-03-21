@@ -195,17 +195,17 @@ const BATTLE_ITEMS = [
 // Battle Styles
 // ────────────────────────────────────────────────
 const BATTLE_STYLES = {
-    classic: { 
-        name: 'Classic', 
-        emoji: '🎯', 
+    classic: {
+        name: 'Classic',
+        emoji: '🎯',
         eventsPerPlayer: 1,
         killChance: 0.35,
         roundDelay: 5000,
         description: 'Balanced gameplay with HP and damage'
     },
-    chaotic: { 
-        name: 'Chaotic', 
-        emoji: '🔥', 
+    chaotic: {
+        name: 'Chaotic',
+        emoji: '🔥',
         eventsPerPlayer: 2,
         killChance: 0.65,
         roundDelay: 3000,
@@ -693,7 +693,7 @@ client.on(Events.MessageCreate, async (message) => {
                 .setFooter({ text: `Requested by ${message.author.tag}` })
                 .setTimestamp();
 
-            return message.channel.send({ embeds: [embed] });
+            return message.reply({ embeds: [embed], ephemeral: true });
         }
 
         // ────────────────────────────────────────────────
@@ -901,7 +901,7 @@ if (cmd === 'battle') {
                         label: 'Chaotic', 
                         value: 'chaotic', 
                         emoji: '🔥',
-                        description: 'More kills & chaos (2 events/player)'
+                        description: 'More kills & chaos (2 events/player)(Starry style)'
                     }
                 ])
         );
