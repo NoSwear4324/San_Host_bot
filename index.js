@@ -1825,12 +1825,124 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await interaction.reply(errorMsg);
             }
         }
+        return;
     }
 
-    // Handle button interactions (for games)
+    // Handle button interactions
     if (interaction.isButton()) {
-        // Let the existing button handlers in messageCreate handle it
-        // This is for slash command buttons that need special handling
+        const customId = interaction.customId;
+
+        try {
+            // HILO JOIN/LEAVE - обрабатывается в коллекторе команды hilo
+            if (['hilo_join', 'hilo_leave'].includes(customId)) {
+                return interaction.deferUpdate().catch(() => {});
+            }
+
+            if (customId === 'hilo_higher' || customId === 'hilo_lower') {
+                const game = activeHiLo.get(interaction.message.id);
+                if (!game || !game.active) return;
+
+                // Проверяем что игрок всё ещё в игре
+                if (!game.players.has(interaction.user.id)) {
+                    return interaction.reply({ content: '❌ You are eliminated! You cannot vote.', ephemeral: true });
+                }
+
+                // Сохраняем голос игрока
+                const vote = customId === 'hilo_higher' ? 'higher' : 'lower';
+                game.votes.set(interaction.user.id, vote);
+
+                await interaction.reply({
+                    content: `✅ Voted: **${vote === 'higher' ? '⬆️ Higher' : '⬇️ Lower'}**`,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            if (customId.startsWith('ttt_')) {
+                const game = activeTicTacToe.get(interaction.message.id);
+                if (!game || game.winner) return;
+
+                if (game.currentTurn !== interaction.user.id) {
+                    return interaction.reply({ content: '❌ Not your turn!', ephemeral: true });
+                }
+
+                const index = parseInt(customId.split('_')[1]);
+                if (isNaN(index) || index < 0 || index > 8) return;
+                if (game.board[index] === 'X' || game.board[index] === 'O') {
+                    return interaction.reply({ content: '❌ This cell is already taken!', ephemeral: true });
+                }
+
+                game.board[index] = game.playerX === interaction.user.id ? 'X' : 'O';
+
+                const winner = checkTicTacToeWinner(game.board);
+
+                if (winner) {
+                    game.winner = winner;
+                    await TicTacToe.findOneAndUpdate({ messageId: interaction.message.id }, {
+                        board: game.board,
+                        winner: winner,
+                        active: false
+                    });
+                    activeTicTacToe.delete(interaction.message.id);
+
+                    let desc = '';
+                    if (winner === 'draw') {
+                        desc = "🤝 It's a draw!";
+                    } else {
+                        const winnerId = winner === 'X' ? game.playerX : game.playerO;
+                        desc = `🎉 **<@${winnerId}>** wins with **${winner}**!`;
+                    }
+
+                    const embed = new EmbedBuilder()
+                        .setColor(winner === 'draw' ? 0xFFA500 : 0x00FF00)
+                        .setTitle('⭕ Tic-Tac-Toe - Game Over')
+                        .setDescription(desc)
+                        .addFields({ name: 'Final Board', value: renderBoard(game.board) })
+                        .setTimestamp();
+
+                    await interaction.update({ embeds: [embed], components: [] });
+                } else {
+                    game.currentTurn = game.playerX === interaction.user.id ? game.playerO : game.playerO;
+                    await TicTacToe.findOneAndUpdate({ messageId: interaction.message.id }, {
+                        board: game.board,
+                        currentTurn: game.currentTurn
+                    });
+
+                    const currentPlayer = game.currentTurn;
+                    const isPlayerX = game.playerX === currentPlayer;
+
+                    const embed = new EmbedBuilder()
+                        .setColor(0x5865F2)
+                        .setTitle('⭕ Tic-Tac-Toe')
+                        .setDescription(`**<@${game.playerX}>** vs **<@${game.playerO}>**\n\n<@${currentPlayer}>'s turn! (<@${currentPlayer}> is **${isPlayerX ? 'X' : 'O'}**)\n\n${renderBoard(game.board)}`)
+                        .setFooter({ text: 'Click a button to place your mark' })
+                        .setTimestamp();
+
+                    const createRow = (start, end) => new ActionRowBuilder()
+                        .addComponents(
+                            ...Array.from({ length: end - start + 1 }, (_, i) => {
+                                const idx = start + i;
+                                return new ButtonBuilder()
+                                    .setCustomId(`ttt_${idx}`)
+                                    .setLabel(game.board[idx])
+                                    .setStyle(ButtonStyle.Secondary)
+                                    .setDisabled(game.board[idx] !== String(idx + 1));
+                            })
+                        );
+
+                    await interaction.update({
+                        embeds: [embed],
+                        components: [createRow(0, 2), createRow(3, 5), createRow(6, 8)]
+                    });
+                }
+                return;
+            }
+        } catch (err) {
+            console.error('Error in InteractionCreate:', err.message);
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: '❌ An error occurred.', ephemeral: true }).catch(() => {});
+            }
+        }
     }
 });
 
@@ -2375,127 +2487,6 @@ async function processHiloVotes(message, game) {
         console.error('❌ Error in processHiloVotes:', err.message);
     }
 }
-
-// ────────────────────────────────────────────────
-// Button Interaction Handler
-// ────────────────────────────────────────────────
-client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isButton()) return;
-
-    const customId = interaction.customId;
-
-    try {
-        // HILO JOIN/LEAVE - обрабатывается в коллекторе команды hilo
-        if (['hilo_join', 'hilo_leave'].includes(customId)) {
-            return interaction.deferUpdate().catch(() => {});
-        }
-
-        if (customId === 'hilo_higher' || customId === 'hilo_lower') {
-            const game = activeHiLo.get(interaction.message.id);
-            if (!game || !game.active) return;
-
-            // Проверяем что игрок всё ещё в игре
-            if (!game.players.has(interaction.user.id)) {
-                return interaction.reply({ content: '❌ You are eliminated! You cannot vote.', ephemeral: true });
-            }
-
-            // Сохраняем голос игрока
-            const vote = customId === 'hilo_higher' ? 'higher' : 'lower';
-            game.votes.set(interaction.user.id, vote);
-
-            await interaction.reply({
-                content: `✅ Voted: **${vote === 'higher' ? '⬆️ Higher' : '⬇️ Lower'}**`,
-                ephemeral: true
-            });
-            return;
-        }
-
-        if (customId.startsWith('ttt_')) {
-            const game = activeTicTacToe.get(interaction.message.id);
-            if (!game || game.winner) return;
-
-            if (game.currentTurn !== interaction.user.id) {
-                return interaction.reply({ content: '❌ Not your turn!', ephemeral: true });
-            }
-
-            const index = parseInt(customId.split('_')[1]);
-            if (isNaN(index) || index < 0 || index > 8) return;
-            if (game.board[index] === 'X' || game.board[index] === 'O') {
-                return interaction.reply({ content: '❌ This cell is already taken!', ephemeral: true });
-            }
-
-            game.board[index] = game.playerX === interaction.user.id ? 'X' : 'O';
-
-            const winner = checkTicTacToeWinner(game.board);
-
-            if (winner) {
-                game.winner = winner;
-                await TicTacToe.findOneAndUpdate({ messageId: interaction.message.id }, {
-                    board: game.board,
-                    winner: winner,
-                    active: false
-                });
-                activeTicTacToe.delete(interaction.message.id);
-
-                let desc = '';
-                if (winner === 'draw') {
-                    desc = "🤝 It's a draw!";
-                } else {
-                    const winnerId = winner === 'X' ? game.playerX : game.playerO;
-                    desc = `🎉 **<@${winnerId}>** wins with **${winner}**!`;
-                }
-
-                const embed = new EmbedBuilder()
-                    .setColor(winner === 'draw' ? 0xFFA500 : 0x00FF00)
-                    .setTitle('⭕ Tic-Tac-Toe - Game Over')
-                    .setDescription(desc)
-                    .addFields({ name: 'Final Board', value: renderBoard(game.board) })
-                    .setTimestamp();
-
-                await interaction.update({ embeds: [embed], components: [] });
-            } else {
-                game.currentTurn = game.playerX === interaction.user.id ? game.playerO : game.playerX;
-                await TicTacToe.findOneAndUpdate({ messageId: interaction.message.id }, {
-                    board: game.board,
-                    currentTurn: game.currentTurn
-                });
-
-                const currentPlayer = game.currentTurn;
-                const isPlayerX = game.playerX === currentPlayer;
-
-                const embed = new EmbedBuilder()
-                    .setColor(0x5865F2)
-                    .setTitle('⭕ Tic-Tac-Toe')
-                    .setDescription(`**<@${game.playerX}>** vs **<@${game.playerO}>**\n\n<@${currentPlayer}>'s turn! (<@${currentPlayer}> is **${isPlayerX ? 'X' : 'O'}**)\n\n${renderBoard(game.board)}`)
-                    .setFooter({ text: 'Click a button to place your mark' })
-                    .setTimestamp();
-
-                const createRow = (start, end) => new ActionRowBuilder()
-                    .addComponents(
-                        ...Array.from({ length: end - start + 1 }, (_, i) => {
-                            const idx = start + i;
-                            return new ButtonBuilder()
-                                .setCustomId(`ttt_${idx}`)
-                                .setLabel(game.board[idx])
-                                .setStyle(ButtonStyle.Secondary)
-                                .setDisabled(game.board[idx] !== String(idx + 1));
-                        })
-                    );
-
-                await interaction.update({ 
-                    embeds: [embed], 
-                    components: [createRow(0, 2), createRow(3, 5), createRow(6, 8)] 
-                });
-            }
-            return;
-        }
-    } catch (err) {
-        console.error('Error in InteractionCreate:', err.message);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: '❌ An error occurred.', ephemeral: true }).catch(() => {});
-        }
-    }
-});
 
 // ────────────────────────────────────────────────
 // Cleanup on Message Delete
