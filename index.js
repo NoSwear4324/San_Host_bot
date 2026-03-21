@@ -968,16 +968,17 @@ if (cmd === 'battle') {
         if (interaction.customId === 'battle_style') {
             // 🔐 CHECK: Only host can change style
             if (interaction.user.id !== message.author.id) {
-                return interaction.reply({ 
-                    content: '❌ Only the battle host (<@' + message.author.id + '>) can change the game style!', 
-                    ephemeral: true 
+                return interaction.reply({
+                    content: '❌ Only the battle host (<@' + message.author.id + '>) can change the game style!',
+                    ephemeral: true
                 });
             }
-            
-            await interaction.reply({ 
-                content: '**Choose a battle style:**', 
-                components: [styleSelect], 
-                ephemeral: true 
+
+            // ✅ Показываем select menu под основным сообщением
+            await msg.edit({ embeds: [embed], components: [row, styleSelect] });
+            await interaction.reply({
+                content: '✅ Select a style from the menu below!',
+                ephemeral: true
             });
             return;
         }
@@ -997,9 +998,12 @@ if (cmd === 'battle') {
 
             console.log('🎲 Style changed to:', selectedStyle, 'by user', interaction.user.tag);
 
+            // ✅ Обновляем embed с новым стилем
             await updateParticipantsEmbed();
 
-            // ✅ Сначала отвечаем на взаимодействие
+            // ✅ Убираем select menu, оставляем только кнопки
+            await msg.edit({ embeds: [embed], components: [row] });
+
             await interaction.reply({
                 content: `✅ Game style changed to **${style.emoji} ${style.name}**!`,
                 ephemeral: true
