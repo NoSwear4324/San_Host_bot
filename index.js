@@ -909,7 +909,7 @@ if (cmd === 'battle') {
     const msg = await message.channel.send({ embeds: [embed], components: [row] });
 
     // ✅ Update function
-    async function updateParticipantsEmbed() {
+    async function updateParticipantsEmbed(showStyleSelect = false) {
         const style = BATTLE_STYLES[currentStyle];
         const participantList = Array.from(participants.entries())
             .map(([id, data]) => `• <@${id}> ❤️ ${data.hp}/${data.maxHp}`)
@@ -928,7 +928,12 @@ if (cmd === 'battle') {
             .setFooter({ text: 'Click "Join", "Leave" or "Change Style"!' })
             .setTimestamp(startTime * 1000);
 
-        try { await msg.edit({ embeds: [newEmbed], components: [row] }); } catch (e) {}
+        try { 
+            const components = showStyleSelect ? [row, styleSelect] : [row];
+            await msg.edit({ embeds: [newEmbed], components }); 
+            // ✅ Обновляем embed для дальнейшего использования
+            embed = newEmbed;
+        } catch (e) {}
     }
 
     // ✅ Button Collector
@@ -975,7 +980,7 @@ if (cmd === 'battle') {
             }
 
             // ✅ Показываем select menu под основным сообщением
-            await msg.edit({ embeds: [embed], components: [row, styleSelect] });
+            await updateParticipantsEmbed(true);
             await interaction.reply({
                 content: '✅ Select a style from the menu below!',
                 ephemeral: true
@@ -993,21 +998,27 @@ if (cmd === 'battle') {
     styleCollector.on('collect', async (interaction) => {
         try {
             const selectedStyle = interaction.values[0];
+            const oldStyle = currentStyle;
             currentStyle = selectedStyle;
             const style = BATTLE_STYLES[selectedStyle];
 
-            console.log('🎲 Style changed to:', selectedStyle, 'by user', interaction.user.tag);
+            console.log('🎲 Style changed from', oldStyle, 'to', selectedStyle, 'by user', interaction.user.tag);
 
-            // ✅ Обновляем embed с новым стилем
+            // ✅ Если участники уже есть, показываем предупреждение
+            if (participants.size > 0 && oldStyle !== selectedStyle) {
+                await interaction.reply({
+                    content: `✅ Style changed to **${style.emoji} ${style.name}**!\n⚠️ Note: This will affect the battle when it starts. Current participants' HP remains at 100.`,
+                    ephemeral: true
+                });
+            } else {
+                await interaction.reply({
+                    content: `✅ Game style changed to **${style.emoji} ${style.name}**!`,
+                    ephemeral: true
+                });
+            }
+
+            // ✅ Обновляем embed с новым стилем и убираем select menu
             await updateParticipantsEmbed();
-
-            // ✅ Убираем select menu, оставляем только кнопки
-            await msg.edit({ embeds: [embed], components: [row] });
-
-            await interaction.reply({
-                content: `✅ Game style changed to **${style.emoji} ${style.name}**!`,
-                ephemeral: true
-            });
         } catch (err) {
             console.error('❌ Style select error:', err.message);
             if (!interaction.replied && !interaction.deferred) {
