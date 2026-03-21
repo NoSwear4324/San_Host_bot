@@ -911,9 +911,19 @@ if (cmd === 'battle') {
     // ✅ Update function
     async function updateParticipantsEmbed(showStyleSelect = false) {
         const style = BATTLE_STYLES[currentStyle];
-        const participantList = Array.from(participants.entries())
-            .map(([id, data]) => `• <@${id}> ❤️ ${data.hp}/${data.maxHp}`)
-            .join('\n') || '*No one has joined yet*';
+        
+        let participantList;
+        if (currentStyle === 'chaotic') {
+            // Chaotic: No HP, just players
+            participantList = Array.from(participants.keys())
+                .map(id => `• <@${id}>`)
+                .join('\n') || '*No one has joined yet*';
+        } else {
+            // Classic: With HP
+            participantList = Array.from(participants.entries())
+                .map(([id, data]) => `• <@${id}> ❤️ ${data.hp}/${data.maxHp}`)
+                .join('\n') || '*No one has joined yet*';
+        }
 
         const newEmbed = new EmbedBuilder()
             .setColor(0xFF4500)
@@ -928,9 +938,9 @@ if (cmd === 'battle') {
             .setFooter({ text: 'Click "Join", "Leave" or "Change Style"!' })
             .setTimestamp(startTime * 1000);
 
-        try { 
+        try {
             const components = showStyleSelect ? [row, styleSelect] : [row];
-            await msg.edit({ embeds: [newEmbed], components }); 
+            await msg.edit({ embeds: [newEmbed], components });
             // ✅ Обновляем embed для дальнейшего использования
             embed = newEmbed;
         } catch (e) {}
@@ -1087,10 +1097,11 @@ if (cmd === 'battle') {
             .setColor(0xFF4500)
             .setTitle(`⚔️ Battle Started! [${style.emoji} ${style.name}]`)
             .setDescription(`**${participants.size} fighters entered the arena!**\n\n${Array.from(participants.keys()).map(id => `🗡️ <@${id}>`).join('\n')}`)
-            .addFields({ 
-                name: '📊 Starting HP', 
-                value: Array.from(participants.keys()).map(id => `• <@${id}>: ❤️ 100/100`).join('\n') 
-            })
+            .addFields(
+                currentStyle === 'chaotic' 
+                    ? { name: '⚙️ Style Settings', value: `Events per player: **${style.eventsPerPlayer}**\nKill chance: **${Math.round(style.killChance * 100)}%**\nRound delay: **${style.roundDelay/1000}s**`, inline: false }
+                    : { name: '📊 Starting HP', value: Array.from(participants.keys()).map(id => `• <@${id}>: ❤️ 100/100`).join('\n'), inline: false }
+            )
             .addFields({
                 name: '⚙️ Style Settings',
                 value: `Events per player: **${style.eventsPerPlayer}**\nKill chance: **${Math.round(style.killChance * 100)}%**\nRound delay: **${style.roundDelay/1000}s**`
