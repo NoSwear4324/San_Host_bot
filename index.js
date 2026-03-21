@@ -990,19 +990,26 @@ if (cmd === 'battle') {
     });
 
     styleCollector.on('collect', async (interaction) => {
-        const selectedStyle = interaction.values[0];
-        currentStyle = selectedStyle;
-        const style = BATTLE_STYLES[selectedStyle];
+        try {
+            const selectedStyle = interaction.values[0];
+            currentStyle = selectedStyle;
+            const style = BATTLE_STYLES[selectedStyle];
 
-        console.log('🎲 Style changed to:', selectedStyle, 'by user', interaction.user.tag);
+            console.log('🎲 Style changed to:', selectedStyle, 'by user', interaction.user.tag);
 
-        await updateParticipantsEmbed();
+            await updateParticipantsEmbed();
 
-        await interaction.update({ components: [row] });
-        await interaction.followUp({
-            content: `✅ Game style changed to **${style.emoji} ${style.name}**!`,
-            ephemeral: true
-        });
+            // ✅ Сначала отвечаем на взаимодействие
+            await interaction.reply({
+                content: `✅ Game style changed to **${style.emoji} ${style.name}**!`,
+                ephemeral: true
+            });
+        } catch (err) {
+            console.error('❌ Style select error:', err.message);
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: '❌ Error changing style!', ephemeral: true });
+            }
+        }
     });
 
     collector.on('end', async (collected, reason) => {
