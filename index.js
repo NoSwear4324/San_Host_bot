@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, Events, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, Events, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const mongoose = require('mongoose');
 
 // ────────────────────────────────────────────────
@@ -115,6 +115,9 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.DirectMessageMessageContent,
+        GatewayIntentBits.DirectMessageReactions,
     ],
     partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
@@ -412,24 +415,98 @@ console.log(`📈 Loaded ${activeHiLo.size} active Hi-Lo games`);
             activities: [{ name: '-help • RBX Events & Games', type: ActivityType.Watching }],
             status: 'online'
         });
+
+        // Register slash commands
+        await registerSlashCommands();
     } catch (err) {
         console.error('Error during client ready:', err.message);
     }
 });
 
 // ────────────────────────────────────────────────
+// Slash Commands Registration
+// ────────────────────────────────────────────────
+const commands = [
+    new SlashCommandBuilder()
+        .setName('ttt')
+        .setDescription('🎮 Play Tic-Tac-Toe with a friend')
+        .addUserOption(option =>
+            option.setName('opponent')
+                .setDescription('The user you want to challenge')
+                .setRequired(true)
+        ),
+    new SlashCommandBuilder()
+        .setName('battle')
+        .setDescription('⚔️ Start a Battle Royale game')
+        .addIntegerOption(option =>
+            option.setName('time')
+                .setDescription('Time to join (10-300 seconds, default: 30)')
+                .setMinValue(10)
+                .setMaxValue(300)
+        ),
+    new SlashCommandBuilder()
+        .setName('hilo')
+        .setDescription('📈 Play HILO - guess higher or lower')
+        .addIntegerOption(option =>
+            option.setName('time')
+                .setDescription('Time to join (10-300 seconds, default: 30)')
+                .setMinValue(10)
+                .setMaxValue(300)
+        ),
+    new SlashCommandBuilder()
+        .setName('status')
+        .setDescription('📊 View your host statistics')
+        .addUserOption(option =>
+            option.setName('user')
+                .setDescription('The user to view stats for')
+        ),
+    new SlashCommandBuilder()
+        .setName('toprating')
+        .setDescription('🏆 Show top rated hosts'),
+    new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('📜 Show all commands'),
+];
+
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+async function registerSlashCommands() {
+    try {
+        console.log('🔄 Registering slash commands...');
+        
+        // Register globally (works everywhere via DM)
+        await rest.put(
+            Routes.applicationCommands(client.user.id),
+            { body: commands.map(cmd => cmd.toJSON()) }
+        );
+        
+        console.log('✅ Slash commands registered globally');
+    } catch (error) {
+        console.error('❌ Failed to register slash commands:', error.message);
+    }
+}
+
+// ────────────────────────────────────────────────
 // Messages / Commands
 // ────────────────────────────────────────────────
 client.on(Events.MessageCreate, async (message) => {
-    if (message.author.bot || !message.guild || !message.content.startsWith('-')) return;
+    if (message.author.bot || !message.content.startsWith('-')) return;
 
     const args = message.content.slice(1).trim().split(/ +/);
     const cmd = args.shift()?.toLowerCase();
     if (!cmd) return;
 
+    // Проверка: некоторые команды работают только на сервере
+    const isDM = !message.guild;
+
     try {
         // === CREATE EVENT ===
         if (EVENT_TYPES[cmd]) {
+            // События работают только на сервере
+            if (isDM) {
+                return message.reply('❌ Event creation is only available on the server!');
+            }
+
             const type = cmd;
             const cfg = EVENT_TYPES[type];
 
@@ -1135,6 +1212,10 @@ if (cmd === 'hilo') {
  
         // === ADMIN: setstats ===
         if (cmd === 'setstats') {
+            // Админ-команды работают только на сервере
+            if (isDM) {
+                return message.reply('❌ This command is only available on the server!');
+            }
             if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
                 return message.react('🚫');
             }
@@ -1156,6 +1237,10 @@ if (cmd === 'hilo') {
 
         // === ADMIN: seteventstats ===
         if (cmd === 'seteventstats') {
+            // Админ-команды работают только на сервере
+            if (isDM) {
+                return message.reply('❌ This command is only available on the server!');
+            }
             if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
                 return message.react('🚫');
             }
@@ -1186,6 +1271,566 @@ if (cmd === 'hilo') {
         try {
             await message.reply('❌ An error occurred while processing your command.').catch(() => {});
         } catch (e) {}
+    }
+});
+
+// ────────────────────────────────────────────────
+// Slash Commands Handler
+// ────────────────────────────────────────────────
+client.on(Events.InteractionCreate, async (interaction) => {
+    // Handle slash commands
+    if (interaction.isChatInputCommand()) {
+        const { commandName } = interaction;
+        
+        try {
+            // === /ttt ===
+            if (commandName === 'ttt') {
+                const opponent = interaction.options.getUser('opponent');
+                
+                if (opponent.bot) {
+                    return interaction.reply({ content: '❌ You cannot play against a bot!', ephemeral: true });
+                }
+                if (opponent.id === interaction.user.id) {
+                    return interaction.reply({ content: '❌ You cannot play against yourself!', ephemeral: true });
+                }
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x5865F2)
+                    .setTitle('⭕ Tic-Tac-Toe Challenge')
+                    .setDescription(`**<@${interaction.user.id}>** challenged **<@${opponent.id}>** to a game of Tic-Tac-Toe!\n\n<@${opponent.id}>, do you accept?`)
+                    .setFooter({ text: 'Challenge expires in 30 seconds' })
+                    .setTimestamp(Date.now() + 30000);
+
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('ttt_accept')
+                            .setLabel('Accept')
+                            .setStyle(ButtonStyle.Success)
+                            .setEmoji('✅'),
+                        new ButtonBuilder()
+                            .setCustomId('ttt_decline')
+                            .setLabel('Decline')
+                            .setStyle(ButtonStyle.Danger)
+                            .setEmoji('❌')
+                    );
+
+                await interaction.reply({ embeds: [embed], components: [row] });
+                const msg = await interaction.fetchReply();
+
+                const collector = msg.createMessageComponentCollector({
+                    filter: i => i.user.id === opponent.id && !i.user.bot,
+                    time: 30000
+                });
+
+                collector.on('collect', async (buttonInteraction) => {
+                    if (buttonInteraction.customId === 'ttt_decline') {
+                        await buttonInteraction.update({
+                            embeds: [new EmbedBuilder()
+                                .setColor(0xFF0000)
+                                .setTitle('⭕ Tic-Tac-Toe')
+                                .setDescription(`<@${opponent.id}> declined the challenge!`)
+                                .setTimestamp()],
+                            components: []
+                        });
+                        return;
+                    }
+
+                    if (buttonInteraction.customId === 'ttt_accept') {
+                        const board = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+                        const gameEmbed = new EmbedBuilder()
+                            .setColor(0x5865F2)
+                            .setTitle('⭕ Tic-Tac-Toe')
+                            .setDescription(`**<@${interaction.user.id}>** vs **<@${opponent.id}>**\n\n<@${interaction.user.id}> is **X** - Your turn!\n\n${renderBoard(board)}`)
+                            .setFooter({ text: 'Click a button to place your mark' })
+                            .setTimestamp();
+
+                        const row1 = new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder().setCustomId('ttt_0').setLabel('1').setStyle(ButtonStyle.Secondary),
+                                new ButtonBuilder().setCustomId('ttt_1').setLabel('2').setStyle(ButtonStyle.Secondary),
+                                new ButtonBuilder().setCustomId('ttt_2').setLabel('3').setStyle(ButtonStyle.Secondary)
+                            );
+                        const row2 = new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder().setCustomId('ttt_3').setLabel('4').setStyle(ButtonStyle.Secondary),
+                                new ButtonBuilder().setCustomId('ttt_4').setLabel('5').setStyle(ButtonStyle.Secondary),
+                                new ButtonBuilder().setCustomId('ttt_5').setLabel('6').setStyle(ButtonStyle.Secondary)
+                            );
+                        const row3 = new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder().setCustomId('ttt_6').setLabel('7').setStyle(ButtonStyle.Secondary),
+                                new ButtonBuilder().setCustomId('ttt_7').setLabel('8').setStyle(ButtonStyle.Secondary),
+                                new ButtonBuilder().setCustomId('ttt_8').setLabel('9').setStyle(ButtonStyle.Secondary)
+                            );
+
+                        await buttonInteraction.update({ embeds: [gameEmbed], components: [row1, row2, row3] });
+
+                        // Create in DB
+                        try {
+                            await TicTacToe.create({
+                                messageId: msg.id,
+                                channelId: msg.channel.id,
+                                playerX: interaction.user.id,
+                                playerO: opponent.id,
+                                currentTurn: interaction.user.id,
+                                board,
+                                winner: null,
+                                active: true
+                            });
+                        } catch (err) {
+                            console.error('❌ Failed to create TTT in DB:', err.message);
+                            return;
+                        }
+
+                        activeTicTacToe.set(msg.id, {
+                            _id: msg.id,
+                            playerX: interaction.user.id,
+                            playerO: opponent.id,
+                            currentTurn: interaction.user.id,
+                            board: [...board],
+                            winner: null,
+                            active: true
+                        });
+                    }
+                });
+
+                collector.on('end', async (collected) => {
+                    if (collected.size === 0) {
+                        try {
+                            await msg.edit({
+                                embeds: [new EmbedBuilder()
+                                    .setColor(0xFFA500)
+                                    .setTitle('⭕ Tic-Tac-Toe')
+                                    .setDescription(`<@${opponent.id}> didn't respond in time!`)
+                                    .setTimestamp()],
+                                components: []
+                            });
+                        } catch (e) {}
+                    }
+                });
+                return;
+            }
+
+            // === /battle ===
+            if (commandName === 'battle') {
+                let timeSeconds = interaction.options.getInteger('time') || 30;
+                const startTime = Math.floor(Date.now() / 1000) + timeSeconds;
+
+                const embed = new EmbedBuilder()
+                    .setColor(0xFF4500)
+                    .setTitle('⚔️ Battle Royale')
+                    .setDescription('**Join the fight, gear up, and pray for good RNG!**\nEach round brings kills, chaos, items, or miracles. Outlive everyone else to claim victory!')
+                    .addFields(
+                        { name: '👥 Participants', value: '**0** / ∞\n*No one has joined yet*', inline: false },
+                        { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+                        { name: '🎮 Host', value: `<@${interaction.user.id}>`, inline: true }
+                    )
+                    .setFooter({ text: 'Click "Join" or "Leave" before battle starts!' })
+                    .setTimestamp(startTime * 1000);
+
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('battle_join')
+                            .setLabel('Join Battle')
+                            .setStyle(ButtonStyle.Success)
+                            .setEmoji('⚔️'),
+                        new ButtonBuilder()
+                            .setCustomId('battle_leave')
+                            .setLabel('Leave')
+                            .setStyle(ButtonStyle.Secondary)
+                            .setEmoji('🚪')
+                    );
+
+                await interaction.reply({ embeds: [embed], components: [row] });
+                const msg = await interaction.fetchReply();
+
+                const participants = new Map();
+
+                async function updateParticipantsEmbed() {
+                    const participantList = Array.from(participants.entries())
+                        .map(([id, data]) => `• <@${id}> ❤️ ${data.hp}/${data.maxHp}`)
+                        .join('\n') || '*No one has joined yet*';
+
+                    const newEmbed = EmbedBuilder.from(embed.toJSON())
+                        .setFields(
+                            { name: '👥 Participants', value: `**${participants.size}** / ∞\n${participantList}`, inline: false },
+                            { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+                            { name: '🎮 Host', value: `<@${interaction.user.id}>`, inline: true }
+                        );
+                    try { await msg.edit({ embeds: [newEmbed] }); } catch (e) {}
+                }
+
+                const collector = msg.createMessageComponentCollector({
+                    filter: i => ['battle_join', 'battle_leave'].includes(i.customId) && !i.user.bot,
+                    time: timeSeconds * 1000
+                });
+
+                collector.on('collect', async (buttonInteraction) => {
+                    if (buttonInteraction.customId === 'battle_join') {
+                        if (!participants.has(buttonInteraction.user.id)) {
+                            participants.set(buttonInteraction.user.id, { hp: 100, maxHp: 100, attack: 10, item: 'None' });
+                            await buttonInteraction.reply({ content: '✅ You joined the battle! Good luck! 🍀', ephemeral: true });
+                            await updateParticipantsEmbed();
+                        } else {
+                            await buttonInteraction.reply({ content: '⚠️ You are already in this battle!', ephemeral: true });
+                        }
+                        return;
+                    }
+
+                    if (buttonInteraction.customId === 'battle_leave') {
+                        if (participants.has(buttonInteraction.user.id)) {
+                            participants.delete(buttonInteraction.user.id);
+                            await buttonInteraction.reply({ content: '🚪 You left the battle!', ephemeral: true });
+                            await updateParticipantsEmbed();
+                        } else {
+                            await buttonInteraction.reply({ content: '❌ You are not in this battle!', ephemeral: true });
+                        }
+                        return;
+                    }
+                });
+
+                collector.on('end', async (collected, reason) => {
+                    if (participants.size < 2) {
+                        try {
+                            await msg.edit({
+                                embeds: [new EmbedBuilder()
+                                    .setColor(0xFF4500)
+                                    .setTitle('❌ Battle Cancelled')
+                                    .setDescription(`Not enough participants (need at least 2, got **${participants.size}**)\nBetter luck next time! 🍀`)
+                                ],
+                                components: []
+                            });
+                        } catch (e) {}
+                        return;
+                    }
+
+                    const participantsArray = Array.from(participants.entries()).map(([userId, data]) => ({
+                        userId,
+                        hp: data.hp,
+                        maxHp: data.maxHp,
+                        attack: data.attack,
+                        item: data.item
+                    }));
+
+                    try {
+                        await Battle.create({
+                            messageId: msg.id,
+                            channelId: msg.channel.id,
+                            host: interaction.user.id,
+                            participants: participantsArray,
+                            round: 0,
+                            alive: participantsArray.map(p => ({ userId: p.userId })),
+                            winner: null
+                        });
+                    } catch (err) {
+                        console.error('❌ Failed to create battle in DB:', err.message);
+                        return;
+                    }
+
+                    activeBattles.set(msg.id, {
+                        _id: msg.id,
+                        host: interaction.user.id,
+                        participants: new Map(participants),
+                        round: 0,
+                        alive: new Set(participants.keys()),
+                        winner: null,
+                        active: true
+                    });
+
+                    const startEmbed = new EmbedBuilder()
+                        .setColor(0xFF4500)
+                        .setTitle('⚔️ Battle Started!')
+                        .setDescription(`**${participants.size} fighters entered the arena!**\n\n${Array.from(participants.keys()).map(id => `🗡️ <@${id}>`).join('\n')}`)
+                        .addFields({ name: '📊 Starting HP', value: Array.from(participants.keys()).map(id => `• <@${id}>: ❤️ 100/100`).join('\n') })
+                        .setFooter({ text: 'No leaving allowed - fight to the end!' })
+                        .setTimestamp(startTime * 1000);
+
+                    try { await msg.edit({ embeds: [startEmbed], components: [] }); } catch (e) {}
+
+                    setTimeout(() => {
+                        const battle = activeBattles.get(msg.id);
+                        if (battle && battle.active) {
+                            startBattleRound(msg, battle);
+                        }
+                    }, 3000);
+                });
+                return;
+            }
+
+            // === /hilo ===
+            if (commandName === 'hilo') {
+                let timeSeconds = interaction.options.getInteger('time') || 30;
+                const startTime = Math.floor(Date.now() / 1000) + timeSeconds;
+                const startNumber = Math.floor(Math.random() * 100) + 1;
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x00AE86)
+                    .setTitle('📈 HILO')
+                    .setDescription('**Guess Higher or Lower!**\n❌ Wrong guess = **Eliminated**\n🏆 Last player standing wins!')
+                    .addFields(
+                        { name: '👥 Players', value: '**0** / ∞\n*No one has joined yet*', inline: false },
+                        { name: '🔢 Starting Number', value: `**${startNumber}**`, inline: true },
+                        { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+                        { name: '🎮 Host', value: `<@${interaction.user.id}>`, inline: true }
+                    )
+                    .setFooter({ text: 'Click "Join" or "Leave" before game starts!' })
+                    .setTimestamp(startTime * 1000);
+
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('hilo_join')
+                            .setLabel('Join HILO')
+                            .setStyle(ButtonStyle.Success)
+                            .setEmoji('📈'),
+                        new ButtonBuilder()
+                            .setCustomId('hilo_leave')
+                            .setLabel('Leave')
+                            .setStyle(ButtonStyle.Secondary)
+                            .setEmoji('🚪')
+                    );
+
+                await interaction.reply({ embeds: [embed], components: [row] });
+                const msg = await interaction.fetchReply();
+
+                const players = new Map();
+
+                async function updatePlayersEmbed() {
+                    const list = Array.from(players.keys()).map(id => `✅ <@${id}>`).join('\n') || '*No one has joined yet*';
+                    const newEmbed = new EmbedBuilder()
+                        .setColor(0x00AE86)
+                        .setTitle('📈 HILO')
+                        .setDescription('**Guess Higher or Lower!**\n❌ Wrong guess = **Eliminated**\n🏆 Last player standing wins!')
+                        .setFields(
+                            { name: '👥 Players', value: `**${players.size}** / ∞\n${list}`, inline: false },
+                            { name: '🔢 Starting Number', value: `**${startNumber}**`, inline: true },
+                            { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
+                            { name: '🎮 Host', value: `<@${interaction.user.id}>`, inline: true }
+                        )
+                        .setFooter({ text: 'Click "Join" or "Leave" before game starts!' })
+                        .setTimestamp(startTime * 1000);
+                    await msg.edit({ embeds: [newEmbed] }).catch(console.error);
+                }
+
+                const collector = msg.createMessageComponentCollector({
+                    filter: i => ['hilo_join', 'hilo_leave'].includes(i.customId) && !i.user.bot,
+                    time: timeSeconds * 1000
+                });
+
+                collector.on('collect', async (buttonInteraction) => {
+                    if (buttonInteraction.customId === 'hilo_join') {
+                        if (!players.has(buttonInteraction.user.id)) {
+                            players.set(buttonInteraction.user.id, { score: 0, highScore: 0, currentNumber: startNumber });
+                            await updatePlayersEmbed();
+                            await buttonInteraction.reply({ content: '✅ You joined HILO! Good luck! 🍀', ephemeral: true });
+                        } else {
+                            await buttonInteraction.reply({ content: '⚠️ You are already in this game!', ephemeral: true });
+                        }
+                        return;
+                    }
+
+                    if (buttonInteraction.customId === 'hilo_leave') {
+                        if (players.has(buttonInteraction.user.id)) {
+                            players.delete(buttonInteraction.user.id);
+                            await buttonInteraction.reply({ content: '🚪 You left the game!', ephemeral: true });
+                            await updatePlayersEmbed();
+                        } else {
+                            await buttonInteraction.reply({ content: '❌ You are not in this game!', ephemeral: true });
+                        }
+                        return;
+                    }
+                });
+
+                collector.on('end', async (collected, reason) => {
+                    if (players.size < 2) {
+                        try {
+                            await msg.edit({
+                                embeds: [new EmbedBuilder()
+                                    .setColor(0xFF4500)
+                                    .setTitle('❌ HILO Cancelled')
+                                    .setDescription(`Not enough players (need at least 2, got **${players.size}**)\nBetter luck next time! 🍀`)
+                                ],
+                                components: []
+                            });
+                        } catch (e) {}
+                        return;
+                    }
+
+                    const playersArray = Array.from(players.entries()).map(([userId, data]) => ({
+                        userId,
+                        score: data.score,
+                        highScore: data.highScore,
+                        currentNumber: data.currentNumber || startNumber
+                    }));
+
+                    try {
+                        await HiLo.create({
+                            messageId: msg.id,
+                            channelId: msg.channel.id,
+                            host: interaction.user.id,
+                            players: playersArray,
+                            currentNumber: startNumber,
+                            currentTurn: playersArray[0].userId,
+                            active: true
+                        });
+                    } catch (err) {
+                        console.error('❌ Failed to create HILO in DB:', err.message);
+                        return;
+                    }
+
+                    activeHiLo.set(msg.id, {
+                        _id: msg.id,
+                        host: interaction.user.id,
+                        players: new Map(players),
+                        currentTurn: playersArray[0].userId,
+                        currentNumber: startNumber,
+                        active: true
+                    });
+
+                    const startEmbed = new EmbedBuilder()
+                        .setColor(0x00AE86)
+                        .setTitle('📈 HILO Game Started!')
+                        .setDescription(`**${players.size} players joined!**\n\nCurrent number: **${startNumber}**`)
+                        .setFooter({ text: 'Get ready to guess Higher or Lower!' })
+                        .setTimestamp();
+
+                    try { await msg.edit({ embeds: [startEmbed], components: [] }); } catch (e) {}
+
+                    setTimeout(() => {
+                        const game = activeHiLo.get(msg.id);
+                        if (game && game.active) {
+                            startHiLoRound(msg, game);
+                        }
+                    }, 3000);
+                });
+                return;
+            }
+
+            // === /status ===
+            if (commandName === 'status') {
+                const target = interaction.options.getUser('user') || interaction.user;
+                const stats = await getStats(target.id);
+                if (!stats) {
+                    return interaction.reply({ content: '❌ Could not fetch stats', ephemeral: true });
+                }
+
+                const eventStats = await Event.aggregate([
+                    { $match: { host: target.id, active: true } },
+                    { $group: {
+                        _id: null,
+                        likes: { $sum: '$likes' },
+                        dislikes: { $sum: '$dislikes' }
+                    }}
+                ]);
+
+                const { likes = 0, dislikes = 0 } = eventStats[0] || {};
+                const { text: badge, percent } = getBadge(likes, dislikes);
+
+                const typesList = Object.entries(stats.byType)
+                    .filter(([, v]) => v > 0)
+                    .map(([k, v]) => `${EVENT_TYPES[k]?.name || k}: **${v}**`)
+                    .join('\n') || 'has not hosted anything yet';
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x5865F2)
+                    .setAuthor({ name: target.tag, iconURL: target.displayAvatarURL() })
+                    .setTitle('📊 Host Statistics')
+                    .addFields(
+                        { name: '🎯 Events Hosted', value: `${stats.eventsHosted}`, inline: true },
+                        { name: '💰 Total Robux', value: `${stats.totalRobux}`, inline: true },
+                        { name: 'By Type', value: typesList, inline: false },
+                        { name: 'Rating', value: `${badge}\n👍 ${likes} • 👎 ${dislikes} • ${percent}%`, inline: false }
+                    )
+                    .setTimestamp();
+
+                return interaction.reply({ embeds: [embed] });
+            }
+
+            // === /toprating ===
+            if (commandName === 'toprating') {
+                const top = await Event.aggregate([
+                    { $match: { active: true } },
+                    { $group: {
+                        _id: '$host',
+                        likes: { $sum: '$likes' },
+                        dislikes: { $sum: '$dislikes' },
+                        events: { $sum: 1 }
+                    }},
+                    { $addFields: {
+                        total: { $add: ['$likes', '$dislikes'] },
+                        percent: {
+                            $cond: [
+                                { $gte: [{ $add: ['$likes', '$dislikes'] }, 5] },
+                                { $round: [{ $multiply: [{ $divide: ['$likes', { $add: ['$likes', '$dislikes'] }] }, 100] }, 0] },
+                                -1
+                            ]
+                        }
+                    }},
+                    { $match: { total: { $gte: 5 } }},
+                    { $sort: { percent: -1, likes: -1 } },
+                    { $limit: 10 }
+                ]);
+
+                if (top.length === 0) {
+                    return interaction.reply({ content: '❌ No data yet (need ≥5 votes per host)', ephemeral: true });
+                }
+
+                const lines = top.map((e, i) => {
+                    const m = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+                    return `${m} <@${e._id}> — **${e.percent}%** (${e.likes}👍 / ${e.dislikes}👎)`;
+                });
+
+                const embed = new EmbedBuilder()
+                    .setColor(0xFFD700)
+                    .setTitle('🏆 Top Hosts')
+                    .setDescription(lines.join('\n'))
+                    .setTimestamp();
+
+                return interaction.reply({ embeds: [embed] });
+            }
+
+            // === /help ===
+            if (commandName === 'help') {
+                const embed = new EmbedBuilder()
+                    .setColor(0x5865F2)
+                    .setTitle('📜 Commands')
+                    .setDescription('**Event Creation Commands** (Main Server Only)')
+                    .addFields(
+                        { name: '🎮 Event Types', value: 'Create events with different Robux amounts', inline: false },
+                        ...Object.entries(EVENT_TYPES).map(([k, v]) => ({
+                            name: `-${k} [amount]`,
+                            value: `${v.min}–${v.max} R$`,
+                            inline: true
+                        })),
+                        { name: '\u200b', value: '\u200b', inline: true },
+                        { name: '📊 Statistics', value: '`-status [@user]` — View host statistics\n`-toprating` — Top hosts by rating', inline: false },
+                        { name: '🎮 Games', value: '`/ttt @user` — Tic-Tac-Toe\n`/battle [time]` — Battle Royale\n`/hilo [time]` — HILO', inline: false },
+                        { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count', inline: false },
+                        { name: '❓ Help', value: '`-help` or `/help` — Show this message', inline: false }
+                    )
+                    .setFooter({ text: `Requested by ${interaction.user.tag}` })
+                    .setTimestamp();
+
+                return interaction.reply({ embeds: [embed] });
+            }
+
+        } catch (error) {
+            console.error('Error handling slash command:', commandName, error.message);
+            const errorMsg = { content: '❌ An error occurred while processing your command.', ephemeral: true };
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp(errorMsg);
+            } else {
+                await interaction.reply(errorMsg);
+            }
+        }
+    }
+
+    // Handle button interactions (for games)
+    if (interaction.isButton()) {
+        // Let the existing button handlers in messageCreate handle it
+        // This is for slash command buttons that need special handling
     }
 });
 

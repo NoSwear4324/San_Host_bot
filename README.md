@@ -2,6 +2,44 @@
 
 Discord bot for hosting Roblox mini events with different tiers.
 
+## ⚡ User Installation (Works on Other Servers)
+
+This bot supports **User Installation** - you can use it on other servers without adding it!
+
+### 🔧 Setup in Discord Developer Portal:
+
+1. Go to https://discord.com/developers/applications
+2. Select your application
+3. Go to **Installation** tab
+4. Enable **User Install** (toggle ON)
+5. Set **Installation Context** to **User Install**
+6. In **Scope**, select: `applications.commands`, `messages.read`
+
+### 📢 Invite Link
+
+Use this link to install the bot for user installation:
+
+```
+https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&integration_type=1&scope=bot+applications.commands
+```
+
+Replace `YOUR_CLIENT_ID` with your bot's client ID.
+
+### 🎮 How to Use on Other Servers
+
+After installing with User Installation:
+
+1. **Right-click the app** → "Open App" OR go to DM with the bot
+2. **Use slash commands** in DM:
+   - `/ttt @user` — Challenge someone to Tic-Tac-Toe
+   - `/battle [time]` — Start a Battle Royale
+   - `/hilo [time]` — Play HILO
+   - `/status` — View your stats
+   - `/help` — Show all commands
+
+> **Note:** Event creation commands (`-community`, `-plus`, etc.) only work on the main server where roles/channels are configured. Games and stats work everywhere via DM!
+
+
 ## Event Types
 
 | Command | Min Robux | Max Robux |
