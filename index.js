@@ -686,7 +686,7 @@ client.on(Events.MessageCreate, async (message) => {
                     })),
                     { name: '\u200b', value: '\u200b', inline: true },
                     { name: '📊 Statistics', value: '`-status [@user]` — View host statistics\n`-toprating` — Top hosts by rating', inline: false },
-                    { name: '🎮 Games', value: '`-ttt @user` — Tic-Tac-Toe\n`-battle [time]` — Battle Royale\n`-hilo [time]` — HILO', inline: false },
+                    { name: '🎮 Games', value: '`-ttt @user` — Tic-Tac-Toe\n`-battle [time]` — Battle\n`-hilo [time]` — HILO', inline: false },
                     { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count', inline: false },
                     { name: '❓ Help', value: '`-help` — Show this message', inline: false }
                 )
@@ -993,18 +993,20 @@ if (cmd === 'battle') {
         const selectedStyle = interaction.values[0];
         currentStyle = selectedStyle;
         const style = BATTLE_STYLES[selectedStyle];
-        
+
+        console.log('🎲 Style changed to:', selectedStyle, 'by user', interaction.user.tag);
+
         await updateParticipantsEmbed();
-        
-        await interaction.update({ components: [] });
-        await interaction.followUp({ 
-            content: `✅ Game style changed to **${style.emoji} ${style.name}**!`, 
-            ephemeral: true 
+
+        await interaction.update({ components: [row] });
+        await interaction.followUp({
+            content: `✅ Game style changed to **${style.emoji} ${style.name}**!`,
+            ephemeral: true
         });
     });
 
     collector.on('end', async (collected, reason) => {
-        console.log('🔪 Battle collector ended. Reason:', reason, 'Participants:', participants.size);
+        console.log('🔪 Battle collector ended. Reason:', reason, 'Participants:', participants.size, 'Style:', currentStyle);
 
         if (participants.size < 2) {
             try {
