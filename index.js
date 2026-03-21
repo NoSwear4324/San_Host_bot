@@ -1098,14 +1098,10 @@ if (cmd === 'battle') {
             .setTitle(`⚔️ Battle Started! [${style.emoji} ${style.name}]`)
             .setDescription(`**${participants.size} fighters entered the arena!**\n\n${Array.from(participants.keys()).map(id => `🗡️ <@${id}>`).join('\n')}`)
             .addFields(
-                currentStyle === 'chaotic' 
+                currentStyle === 'chaotic'
                     ? { name: '⚙️ Style Settings', value: `Events per player: **${style.eventsPerPlayer}**\nKill chance: **${Math.round(style.killChance * 100)}%**\nRound delay: **${style.roundDelay/1000}s**`, inline: false }
                     : { name: '📊 Starting HP', value: Array.from(participants.keys()).map(id => `• <@${id}>: ❤️ 100/100`).join('\n'), inline: false }
             )
-            .addFields({
-                name: '⚙️ Style Settings',
-                value: `Events per player: **${style.eventsPerPlayer}**\nKill chance: **${Math.round(style.killChance * 100)}%**\nRound delay: **${style.roundDelay/1000}s**`
-            })
             .setFooter({ text: 'No leaving allowed - fight to the end!' })
             .setTimestamp();
 
@@ -1506,10 +1502,16 @@ async function startBattleRound(message, battle) {
             activeBattles.delete(message.id);
 
             const winnerData = battle.participants.get(battle.winner);
+            
+            // ✅ Chaotic style - no HP shown
+            const winDescription = battle.style === 'chaotic'
+                ? `🏆 Winner: **<@${battle.winner}>**`
+                : `🏆 Winner: **<@${battle.winner}>** with **${winnerData?.hp || 0} HP** remaining!`;
+            
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
                 .setTitle('⚔️ Battle - Game Over!')
-                .setDescription(`🏆 Winner: **<@${battle.winner}>** with **${winnerData?.hp || 0} HP** remaining!`)
+                .setDescription(winDescription)
                 .addFields({ name: '🎮 Style', value: `${style.emoji} ${style.name}` })
                 .setTimestamp();
 
@@ -1685,10 +1687,16 @@ async function startBattleRound(message, battle) {
 
             if (battle.winner) {
                 const winnerData = battle.participants.get(battle.winner);
+                
+                // ✅ Chaotic style - no HP shown
+                const winDescription = battle.style === 'chaotic'
+                    ? `🏆 Winner: **<@${battle.winner}>**`
+                    : `🏆 Winner: **<@${battle.winner}>** with **${winnerData?.hp || 0} HP** remaining!`;
+                
                 const winEmbed = new EmbedBuilder()
                     .setColor(0x00FF00)
                     .setTitle('⚔️ Battle - Game Over!')
-                    .setDescription(`🏆 Winner: **<@${battle.winner}>** with **${winnerData?.hp || 0} HP** remaining!`)
+                    .setDescription(winDescription)
                     .addFields({ name: '🎮 Style', value: `${style.emoji} ${style.name}` })
                     .setTimestamp();
 
