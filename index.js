@@ -210,41 +210,116 @@ const BATTLE_STYLES = {
         killChance: 0.65,
         roundDelay: 3000,
         description: 'More kills, chaos, and fun events!'
+    },
+    starry: {
+        name: 'Starry Battle',
+        emoji: '⭐',
+        eventsPerPlayer: 1,
+        killChance: 0.55,
+        roundDelay: 4000,
+        description: 'Same like "Chaotic" but with single event per player!'
     }
 };
 
-// Chaotic Events (from screenshots)
+// Chaotic Events (from screenshots) + Custom
 const CHAOTIC_EVENTS = [
+    // ☠️ DEATH / KILL Events
     { emoji: '☠️', text: (u, t) => `<@${u}> wrote <@${t}>'s name on his Death Note.` },
     { emoji: '🗡️', text: (u, t) => `<@${u}> got 13-studded by <@${t}>.` },
     { emoji: '☠️', text: (u) => `<@${u}> got degloved.` },
-    { emoji: '🌻', text: (u) => `<@${u}> tiptoed through the tulips.` },
-    { emoji: '🗡️', text: (u) => `<@${u}> exit scammed themself.` },
     { emoji: '☠️', text: (u, t) => `<@${u}> didn't want to live in the same world as <@${t}> anymore.` },
-    { emoji: '🗡️', text: (u, t) => `<@${u}> cut down the tree 🪓` },
-    { emoji: '🌻', text: (u) => `<@${u}> said "On my life, I'm gay."` },
     { emoji: '☠️', text: (u) => `<@${u}> fell off a roller coaster at 70 mph. We all know what happened next.` },
+    { emoji: '☠️', text: (u, t) => `<@${u}> killed <@${t}> with a chair.` },
+    { emoji: '☠️', text: (u) => `<@${u}> spontaneously combusted.` },
+    { emoji: '☠️', text: (u, t) => `<@${u}> betrayed <@${t}>.` },
+    { emoji: '☠️', text: (u) => `<@${u}> was taken by the gravity police.` },
+    { emoji: '☠️', text: (u, t) => `<@${u}> fed <@${t}> to the sharks.` },
+    { emoji: '☠️', text: (u) => `<@${u}> forgot to breathe.` },
+    { emoji: '☠️', text: (u, t) => `<@${u}> convinced <@${t}> that the earth is flat. <@${t}> walked off the edge.` },
+    { emoji: '☠️', text: (u) => `<@${u}> tried to swim in lava.` },
+    { emoji: '☠️', text: (u, t) => `<@${u}> sent <@${t}> to the shadow realm.` },
+    { emoji: '☠️', text: (u) => `<@${u}>'s heart couldn't handle the stress.` },
+    { emoji: '☠️', text: (u, t) => `<@${u}> dropkicked <@${t}> into orbit.` },
+    { emoji: '☠️', text: (u) => `<@${u}> tried to pet a landmine.` },
+    { emoji: '☠️', text: (u, t) => `<@${u}> tricked <@${t}> into drinking bleach.` },
+    { emoji: '☠️', text: (u) => `<@${u}> was disqualified from life.` },
+    { emoji: '☠️', text: (u, t) => `<@${u}> threw <@${t}> into a black hole.` },
+    
+    // 🗡️ ACTION / FIGHT Events
+    { emoji: '🗡️', text: (u, t) => `<@${u}> cut down the tree 🪓` },
     { emoji: '🗡️', text: (u, t) => `<@${u}> convinced <@${t}> to run a "lag remover" script.` },
-    { emoji: '🌻', text: (u) => `<@${u}> didn't get alerted.` },
     { emoji: '🗡️', text: (u, t) => `<@${u}> killed <@${t}>.` },
-    { emoji: '🌻', text: (u) => `<@${u}> did absolutely nothing.` },
-    { emoji: '❤️', text: (u) => `<@${u}> bought an extra life.` },
     { emoji: '🗡️', text: (u) => `<@${u}> found a sword. Interesting.` },
     { emoji: '🗡️', text: (u) => `<@${u}> is climbing.` },
     { emoji: '🗡️', text: (u) => `<@${u}> sold.` },
     { emoji: '🗡️', text: (u) => `<@${u}> fell for cricle.` },
-    { emoji: '☠️', text: (u, t) => `<@${u}> killed <@${t}> with a chair.` },
-    { emoji: '🌻', text: (u) => `<@${u}> contemplated existence.` },
     { emoji: '🗡️', text: (u, t) => `<@${u}> threw a rock at <@${t}>.` },
-    { emoji: '☠️', text: (u) => `<@${u}> spontaneously combusted.` },
-    { emoji: '🌻', text: (u) => `<@${u}> pet a dog.` },
     { emoji: '🗡️', text: (u, t) => `<@${u}> pushed <@${t}> off a cliff.` },
-    { emoji: '☠️', text: (u, t) => `<@${u}> betrayed <@${t}>.` },
+    { emoji: '🗡️', text: (u, t) => `<@${u}> trolled <@${t}> hard.` },
+    { emoji: '🗡️', text: (u, t) => `<@${u}> stabbed <@${t}> with a rusty spoon.` },
+    { emoji: '🗡️', text: (u) => `<@${u}> is practicing combo moves.` },
+    { emoji: '🗡️', text: (u, t) => `<@${u}> challenged <@${t}> to a duel.` },
+    { emoji: '🗡️', text: (u) => `<@${u}> sharpened their blade.` },
+    { emoji: '🗡️', text: (u, t) => `<@${u}> backstabbed <@${t}>.` },
+    { emoji: '🗡️', text: (u) => `<@${u}> is on a rampage.` },
+    { emoji: '🗡️', text: (u, t) => `<@${u}> hit <@${t}> with a critical strike.` },
+    { emoji: '🗡️', text: (u) => `<@${u}> entered berserker mode.` },
+    { emoji: '🗡️', text: (u, t) => `<@${u}> comboed <@${t}> into oblivion.` },
+    { emoji: '🗡️', text: (u) => `<@${u}> is hunting for players.` },
+    
+    // 🌻 FUNNY / PEACEFUL Events
+    { emoji: '🌻', text: (u) => `<@${u}> tiptoed through the tulips.` },
+    { emoji: '🌻', text: (u) => `<@${u}> said "On my life, I'm gay."` },
+    { emoji: '🌻', text: (u) => `<@${u}> didn't get alerted.` },
+    { emoji: '🌻', text: (u) => `<@${u}> did absolutely nothing.` },
+    { emoji: '🌻', text: (u) => `<@${u}> contemplated existence.` },
+    { emoji: '🌻', text: (u) => `<@${u}> pet a dog.` },
     { emoji: '🌻', text: (u) => `<@${u}> found a cozy spot and napped.` },
-    { emoji: '🗡️', text: (u, t) => `<@${u}> stole <@${t}>'s lunch money.` },
-    { emoji: '☠️', text: (u) => `<@${u}> was taken by the gravity police.` },
     { emoji: '🌻', text: (u) => `<@${u}> enjoyed the scenery.` },
-    { emoji: '🗡️', text: (u, t) => `<@${u}> trolled <@${t}> hard.` }
+    { emoji: '🌻', text: (u) => `<@${u}> is vibing.` },
+    { emoji: '🌻', text: (u) => `<@${u}> stopped to smell the roses.` },
+    { emoji: '🌻', text: (u) => `<@${u}> is having an existential crisis.` },
+    { emoji: '🌻', text: (u) => `<@${u}> made a new friend.` },
+    { emoji: '🌻', text: (u) => `<@${u}> is living their best life.` },
+    { emoji: '🌻', text: (u) => `<@${u}> took a selfie.` },
+    { emoji: '🌻', text: (u) => `<@${u}> is dancing in the rain.` },
+    { emoji: '🌻', text: (u) => `<@${u}> found a secret area.` },
+    { emoji: '🌻', text: (u) => `<@${u}> is collecting butterflies.` },
+    { emoji: '🌻', text: (u) => `<@${u}> wrote a poem.` },
+    { emoji: '🌻', text: (u) => `<@${u}> is stargazing.` },
+    { emoji: '🌻', text: (u) => `<@${u}> ordered a pizza.` },
+    
+    // ❤️ HEAL / BUFF Events
+    { emoji: '❤️', text: (u) => `<@${u}> bought an extra life.` },
+    { emoji: '❤️', text: (u) => `<@${u}> found a health potion.` },
+    { emoji: '❤️', text: (u) => `<@${u}> is regenerating.` },
+    { emoji: '❤️', text: (u) => `<@${u}> ate a power-up.` },
+    { emoji: '❤️', text: (u) => `<@${u}> received a blessing.` },
+    { emoji: '❤️', text: (u) => `<@${u}> is feeling lucky.` },
+    { emoji: '❤️', text: (u) => `<@${u}> drank a smoothie.` },
+    { emoji: '❤️', text: (u) => `<@${u}> is glowing with energy.` },
+    
+    // 🎲 RANDOM / CHAOS Events
+    { emoji: '🎲', text: (u) => `<@${u}> rolled a natural 1.` },
+    { emoji: '🎲', text: (u) => `<@${u}>'s controller disconnected.` },
+    { emoji: '🎲', text: (u) => `<@${u}> is experiencing lag.` },
+    { emoji: '🎲', text: (u) => `<@${u}> accidentally pressed the wrong button.` },
+    { emoji: '🎲', text: (u) => `<@${u}> is confused.` },
+    { emoji: '🎲', text: (u) => `<@${u}> summoned a random event.` },
+    { emoji: '🎲', text: (u) => `<@${u}> is glitching through the floor.` },
+    { emoji: '🎲', text: (u) => `<@${u}> became one with the void.` },
+    
+    // ⭐ STARRY SPECIAL Events
+    { emoji: '⭐', text: (u) => `<@${u}> wished upon a star.` },
+    { emoji: '⭐', text: (u) => `<@${u}> is channeling cosmic energy.` },
+    { emoji: '⭐', text: (u) => `<@${u}> saw a shooting star.` },
+    { emoji: '⭐', text: (u) => `<@${u}> is blessed by the stars.` },
+    { emoji: '⭐', text: (u, t) => `<@${u}> dropped a star on <@${t}>.` },
+    { emoji: '⭐', text: (u) => `<@${u}> is glowing stardust.` },
+    { emoji: '⭐', text: (u) => `<@${u}> teleported through space.` },
+    { emoji: '⭐', text: (u) => `<@${u}> collected star fragments.` },
+    { emoji: '⭐', text: (u) => `<@${u}> is floating in zero gravity.` },
+    { emoji: '⭐', text: (u) => `<@${u}> became a constellation.` }
 ];
 
 // ────────────────────────────────────────────────
@@ -854,7 +929,13 @@ if (cmd === 'battle') {
     const embed = new EmbedBuilder()
         .setColor(0xFF4500)
         .setTitle('⚔️ Battle Royale')
-        .setDescription('**Join the fight, gear up, and pray for good RNG!**\nEach round brings kills, chaos, items, or miracles. Outlive everyone else to claim victory!')
+        .setDescription(
+            currentStyle === 'chaotic'
+                ? '**🔥 CHAOTIC MODE ACTIVATED!**\nDouble the chaos, double the fun! Every player gets 2 events per round. Expect kills, betrayals, and absolute madness! Last player standing wins!'
+                : currentStyle === 'starry'
+                ? '**⭐ STARRY BATTLE ENGAGED!**\nCosmic chaos awaits! Each player gets 1 event per round with increased kill chance. The stars decide your fate—will you shine bright or burn out?'
+                : '**Join the fight, gear up, and pray for good RNG!**\nEach round brings kills, chaos, items, or miracles. Outlive everyone else to claim victory!'
+        )
         .addFields(
             { name: '👥 Participants', value: '**0** / ∞\n*No one has joined yet*', inline: false },
             { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
@@ -891,17 +972,23 @@ if (cmd === 'battle') {
                 .setCustomId('battle_style_select')
                 .setPlaceholder('Select battle style...')
                 .addOptions([
-                    { 
-                        label: 'Classic', 
-                        value: 'classic', 
+                    {
+                        label: 'Classic',
+                        value: 'classic',
                         emoji: '🎯',
                         description: 'Balanced gameplay (1 event/player)'
                     },
-                    { 
-                        label: 'Chaotic', 
-                        value: 'chaotic', 
+                    {
+                        label: 'Chaotic',
+                        value: 'chaotic',
                         emoji: '🔥',
-                        description: 'More kills & chaos (2 events/player)(Starry style)'
+                        description: 'More kills & chaos (2 events/player)'
+                    },
+                    {
+                        label: 'Starry Battle',
+                        value: 'starry',
+                        emoji: '⭐',
+                        description: 'Starry chaos (1 event/player)'
                     }
                 ])
         );
@@ -911,10 +998,10 @@ if (cmd === 'battle') {
     // ✅ Update function
     async function updateParticipantsEmbed(showStyleSelect = false) {
         const style = BATTLE_STYLES[currentStyle];
-        
+
         let participantList;
-        if (currentStyle === 'chaotic') {
-            // Chaotic: No HP, just players
+        if (currentStyle === 'chaotic' || currentStyle === 'starry') {
+            // Chaotic & Starry: No HP, just players
             participantList = Array.from(participants.keys())
                 .map(id => `• <@${id}>`)
                 .join('\n') || '*No one has joined yet*';
@@ -928,7 +1015,13 @@ if (cmd === 'battle') {
         const newEmbed = new EmbedBuilder()
             .setColor(0xFF4500)
             .setTitle('⚔️ Battle Royale')
-            .setDescription('**Join the fight, gear up, and pray for good RNG!**\nEach round brings kills, chaos, items, or miracles. Outlive everyone else to claim victory!')
+            .setDescription(
+                currentStyle === 'chaotic'
+                    ? '**🔥 CHAOTIC MODE ACTIVATED!**\nDouble the chaos, double the fun! Every player gets 2 events per round. Expect kills, betrayals, and absolute madness! Last player standing wins!'
+                    : currentStyle === 'starry'
+                    ? '**⭐ STARRY BATTLE ENGAGED!**\nCosmic chaos awaits! Each player gets 1 event per round with increased kill chance. The stars decide your fate—will you shine bright or burn out?'
+                    : '**Join the fight, gear up, and pray for good RNG!**\nEach round brings kills, chaos, items, or miracles. Outlive everyone else to claim victory!'
+            )
             .addFields(
                 { name: '👥 Participants', value: `**${participants.size}** / ∞\n${participantList}`, inline: false },
                 { name: '⏱️ Starts at', value: `<t:${startTime}:F> (<t:${startTime}:R>)`, inline: true },
@@ -1502,9 +1595,9 @@ async function startBattleRound(message, battle) {
             activeBattles.delete(message.id);
 
             const winnerData = battle.participants.get(battle.winner);
-            
-            // ✅ Chaotic style - no HP shown
-            const winDescription = battle.style === 'chaotic'
+
+            // ✅ Chaotic & Starly style - no HP shown
+            const winDescription = battle.style === 'chaotic' || battle.style === 'starry'
                 ? `🏆 Winner: **<@${battle.winner}>**`
                 : `🏆 Winner: **<@${battle.winner}>** with **${winnerData?.hp || 0} HP** remaining!`;
             
@@ -1546,19 +1639,19 @@ async function startBattleRound(message, battle) {
                 const player = battle.participants.get(userId);
                 if (!player) continue;
 
-                // ✅ CHAOTIC STYLE - Use funny events
-                if (battle.style === 'chaotic') {
+                // ✅ CHAOTIC & STARRY STYLE - Use funny events
+                if (battle.style === 'chaotic' || battle.style === 'starry') {
                     const chaoticEvent = CHAOTIC_EVENTS[Math.floor(Math.random() * CHAOTIC_EVENTS.length)];
                     const aliveTargets = aliveArray.filter(id => id !== userId);
                     const targetId = aliveTargets.length > 0 ? aliveTargets[Math.floor(Math.random() * aliveTargets.length)] : null;
-                    
+
                     let eventText = '';
                     const isKillEvent = chaoticEvent.text.length === 2;
                     const isKill = isKillEvent && targetId && (Math.random() < killChance);
-                    
+
                     if (isKill && targetId) {
                         eventText = `${chaoticEvent.emoji} ${chaoticEvent.text(userId, targetId)}`;
-                        if (chaoticEvent.text.toString().includes('killed') || 
+                        if (chaoticEvent.text.toString().includes('killed') ||
                             chaoticEvent.text.toString().includes('Death Note') ||
                             chaoticEvent.text.toString().includes('degloved') ||
                             chaoticEvent.text.toString().includes('13-studded') ||
@@ -1570,7 +1663,7 @@ async function startBattleRound(message, battle) {
                     } else {
                         eventText = `${chaoticEvent.emoji} ${chaoticEvent.text(userId, targetId)}`;
                     }
-                    
+
                     events.push(eventText);
                     continue;
                 }
@@ -1633,7 +1726,7 @@ async function startBattleRound(message, battle) {
 
         // ✅ Format alive list based on style
         let aliveList;
-        if (battle.style === 'chaotic') {
+        if (battle.style === 'chaotic' || battle.style === 'starry') {
             aliveList = Array.from(battle.alive)
                 .map(id => `• <@${id}>`)
                 .join('\n') || 'None';
@@ -1652,8 +1745,14 @@ async function startBattleRound(message, battle) {
 
         const embed = new EmbedBuilder()
             .setColor(0xFF4500)
-            .setTitle(`⚔️ Battle - Round ${round} ${battle.style === 'chaotic' ? `[🔥 Chaotic]` : ''}`)
-            .setDescription(events.length > 0 ? events.join('\n') : '🤷 Nothing happened this round...')
+            .setTitle(`⚔️ Battle - Round ${round} ${battle.style === 'chaotic' ? `[🔥 Chaotic]` : battle.style === 'starry' ? `[⭐ Starry]` : battle.style === 'hardcore' ? `[💀 Hardcore]` : ''}`)
+            .setDescription(
+                battle.style === 'chaotic'
+                    ? `🔥 **CHAOS UNLEASHED!** ${events.length} events happened this round!\n\n${events.join('\n')}`
+                    : battle.style === 'starry'
+                    ? `⭐ **STARS ALIGN!** ${events.length} cosmic events unfolded!\n\n${events.join('\n')}`
+                    : events.length > 0 ? events.join('\n') : '🤷 Nothing happened this round...'
+            )
             .addFields(
                 { name: `Players Left (${battle.alive.size})`, value: aliveList },
                 { name: '💀 Eliminated', value: `${Array.from(battle.participants.keys()).length - battle.alive.size}` }
@@ -1687,17 +1786,33 @@ async function startBattleRound(message, battle) {
 
             if (battle.winner) {
                 const winnerData = battle.participants.get(battle.winner);
-                
-                // ✅ Chaotic style - no HP shown
-                const winDescription = battle.style === 'chaotic'
+
+                // ✅ Chaotic & Starry style - no HP shown
+                const winDescription = battle.style === 'chaotic' || battle.style === 'starry'
                     ? `🏆 Winner: **<@${battle.winner}>**`
                     : `🏆 Winner: **<@${battle.winner}>** with **${winnerData?.hp || 0} HP** remaining!`;
-                
+
+                const winTitle = battle.style === 'chaotic'
+                    ? '🔥 Chaotic Battle - Game Over!'
+                    : battle.style === 'starry'
+                    ? '⭐ Starry Battle - Victory!'
+                    : '⚔️ Battle - Game Over!';
+
+                const winFooter = battle.style === 'chaotic'
+                    ? 'Chaos has spoken!'
+                    : battle.style === 'starry'
+                    ? 'The stars have chosen their champion!'
+                    : 'Battle concluded!';
+
                 const winEmbed = new EmbedBuilder()
                     .setColor(0x00FF00)
-                    .setTitle('⚔️ Battle - Game Over!')
+                    .setTitle(winTitle)
                     .setDescription(winDescription)
-                    .addFields({ name: '🎮 Style', value: `${style.emoji} ${style.name}` })
+                    .addFields(
+                        { name: '🎮 Style', value: `${style.emoji} ${style.name}` },
+                        { name: '💀 Total Eliminated', value: `${Array.from(battle.participants.keys()).length - 1}` }
+                    )
+                    .setFooter({ text: winFooter })
                     .setTimestamp();
 
                 try {
