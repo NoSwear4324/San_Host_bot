@@ -212,7 +212,7 @@ const BATTLE_STYLES = {
         description: 'More kills, chaos, and fun events!'
     },
     starry: {
-        name: 'Starry Battle',
+        name: 'Starry',
         emoji: '⭐',
         eventsPerPlayer: 1,
         killChance: 0.55,
@@ -1191,7 +1191,7 @@ if (cmd === 'battle') {
             .setTitle(`⚔️ Battle Started! [${style.emoji} ${style.name}]`)
             .setDescription(`**${participants.size} fighters entered the arena!**\n\n${Array.from(participants.keys()).map(id => `🗡️ <@${id}>`).join('\n')}`)
             .addFields(
-                currentStyle === 'chaotic'
+                currentStyle === 'chaotic' || currentStyle === 'starry'
                     ? { name: '⚙️ Style Settings', value: `Events per player: **${style.eventsPerPlayer}**\nKill chance: **${Math.round(style.killChance * 100)}%**\nRound delay: **${style.roundDelay/1000}s**`, inline: false }
                     : { name: '📊 Starting HP', value: Array.from(participants.keys()).map(id => `• <@${id}>: ❤️ 100/100`).join('\n'), inline: false }
             )
@@ -1633,6 +1633,14 @@ async function startBattleRound(message, battle) {
 
         // ✅ Multiple events per player based on style
         for (let e = 0; e < eventsPerPlayer; e++) {
+            // ✅ Обновляем aliveArray каждую итерацию для актуального списка
+            aliveArray = Array.from(battle.alive);
+            
+            // ✅ Проверка на победу внутри цикла
+            if (aliveArray.length <= 1) break;
+            
+            const shuffled = [...aliveArray].sort(() => Math.random() - 0.5);
+            
             for (const userId of shuffled) {
                 if (!battle.alive.has(userId)) continue;
 
@@ -1642,26 +1650,26 @@ async function startBattleRound(message, battle) {
                 // ✅ CHAOTIC & STARRY STYLE - Use funny events
                 if (battle.style === 'chaotic' || battle.style === 'starry') {
                     const chaoticEvent = CHAOTIC_EVENTS[Math.floor(Math.random() * CHAOTIC_EVENTS.length)];
-                    const aliveTargets = aliveArray.filter(id => id !== userId);
+                    const aliveTargets = Array.from(battle.alive).filter(id => id !== userId);
                     const targetId = aliveTargets.length > 0 ? aliveTargets[Math.floor(Math.random() * aliveTargets.length)] : null;
 
                     let eventText = '';
                     const isKillEvent = chaoticEvent.text.length === 2;
+                    const isSelfKillEvent = chaoticEvent.text.length === 1 && chaoticEvent.emoji === '☠️';
                     const isKill = isKillEvent && targetId && (Math.random() < killChance);
+                    const isSelfKill = isSelfKillEvent && (Math.random() < killChance);
 
                     if (isKill && targetId) {
+                        // ✅ Kill another player
                         eventText = `${chaoticEvent.emoji} ${chaoticEvent.text(userId, targetId)}`;
-                        if (chaoticEvent.text.toString().includes('killed') ||
-                            chaoticEvent.text.toString().includes('Death Note') ||
-                            chaoticEvent.text.toString().includes('degloved') ||
-                            chaoticEvent.text.toString().includes('13-studded') ||
-                            chaoticEvent.text.toString().includes('betrayed') ||
-                            chaoticEvent.text.toString().includes('pushed') ||
-                            chaoticEvent.text.toString().includes('spontaneously')) {
-                            battle.alive.delete(targetId);
-                        }
+                        battle.alive.delete(targetId);
+                    } else if (isSelfKill) {
+                        // ✅ Kill yourself
+                        eventText = `${chaoticEvent.emoji} ${chaoticEvent.text(userId)}`;
+                        battle.alive.delete(userId);
                     } else {
-                        eventText = `${chaoticEvent.emoji} ${chaoticEvent.text(userId, targetId)}`;
+                        // ✅ No kill - just event
+                        eventText = `${chaoticEvent.emoji} ${chaoticEvent.text.length === 2 ? chaoticEvent.text(userId, targetId) : chaoticEvent.text(userId)}`;
                     }
 
                     events.push(eventText);
@@ -1830,12 +1838,17 @@ async function startBattleRound(message, battle) {
         }
 
         if (battle.alive.size > 1 && battle.active) {
+            console.log(`⏳ Next round in ${roundDelay/1000}s... (${battle.alive.size} players alive)`);
             setTimeout(() => {
                 const freshBattle = activeBattles.get(message.id);
-                if (freshBattle?.active) {
+                if (freshBattle?.active && freshBattle.alive.size > 1) {
                     startBattleRound(message, freshBattle);
+                } else if (freshBattle?.alive.size === 1) {
+                    console.log('🏆 Winner detected before next round!', Array.from(freshBattle.alive)[0]);
                 }
             }, roundDelay);
+        } else {
+            console.log(`⏹️ Battle ending... alive.size=${battle.alive.size}, active=${battle.active}`);
         }
 
     } catch (err) {
