@@ -985,10 +985,10 @@ if (cmd === 'battle') {
                         description: 'More kills & chaos (2 events/player)'
                     },
                     {
-                        label: 'Starry Battle',
+                        label: 'Starry',
                         value: 'starry',
                         emoji: '⭐',
-                        description: 'Starry chaos (1 event/player)'
+                        description: 'Battle like in Starry (1 event/player)'
                     }
                 ])
         );
