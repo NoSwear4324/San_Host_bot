@@ -156,7 +156,7 @@ const overlapCooldowns = new Map();
 // ────────────────────────────────────────────────
 // Game Constants
 // ────────────────────────────────────────────────
-const OVERLAP_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+const OVERLAP_COOLDOWN_MS = 3 * 60 * 1000; // 3 minutes
 
 const BATTLE_ITEMS = [
     { name: '🗡️ Sword', damage: 15, heal: 0 },
