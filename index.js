@@ -144,6 +144,16 @@ const PING_ROLES = {
 const ADMIN_ROLES = ['1475552294203424880', '1475552827626619050'];
 const HOST_BLACKLIST_ROLE = '1482828757965340978'; // Replace with actual blacklist role ID
 
+// Tiers in ascending order (higher tier can host in lower tier channels)
+const TIER_ORDER = ['community', 'plus', 'super', 'ultra', 'ultimate', 'extreme', 'godly'];
+
+// Check if user with given type can host in channel of channelType
+function canHostInChannel(userType, channelType) {
+    const userTier = TIER_ORDER.indexOf(userType);
+    const channelTier = TIER_ORDER.indexOf(channelType);
+    return userTier >= channelTier; // higher or equal tier can host
+}
+
 // ────────────────────────────────────────────────
 // Cache
 // ────────────────────────────────────────────────
@@ -566,8 +576,18 @@ client.on(Events.MessageCreate, async (message) => {
             const type = cmd;
             const cfg = EVENT_TYPES[type];
 
-            if (message.channel.id !== cfg.channelId) {
-                return message.reply(`❌ Only in <#${cfg.channelId}>`).then(m => setTimeout(() => m.delete().catch(()=>{}), 5000));
+            // Find the channel type by channel ID
+            let channelType = null;
+            for (const [tierKey, tierConfig] of Object.entries(EVENT_TYPES)) {
+                if (message.channel.id === tierConfig.channelId) {
+                    channelType = tierKey;
+                    break;
+                }
+            }
+
+            // Check if user can host in this channel (higher tiers can host in lower tier channels)
+            if (!canHostInChannel(type, channelType)) {
+                return message.reply(`❌ You can't host ${cfg.name} events in this channel!`);
             }
 
             if (!message.member?.roles.cache.has(EVENT_ROLES[type])) {
