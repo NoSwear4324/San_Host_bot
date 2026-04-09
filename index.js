@@ -1816,13 +1816,53 @@ async function startBattleRound(message, battle) {
                 { name: `Players Left (${battle.alive.size})`, value: aliveList },
                 { name: '💀 Eliminated', value: `${Array.from(battle.participants.keys()).length - battle.alive.size}` }
             )
-            .setFooter({ text: battle.alive.size > 1 ? `Next round in ${roundDelay/1000}s...` : 'Determining winner...' })
+            .setFooter({ text: battle.alive.size > 1 ? `Next round in ${roundDelay/1000}s...` : '⚡ Finalizing results...' })
             .setTimestamp();
 
         try {
             await message.edit({ embeds: [embed], components: [] });
         } catch (err) {
             console.error('❌ Failed to edit message:', err.message);
+        }
+
+        // ✅ SAFETY CHECK: If only 1 player left, announce winner immediately
+        if (battle.alive.size === 1) {
+            battle.winner = Array.from(battle.alive)[0];
+            battle.active = false;
+            
+            await Battle.findOneAndUpdate({ messageId: message.id }, {
+                winner: battle.winner,
+                active: false,
+                round: battle.round
+            }).catch(console.error);
+
+            activeBattles.delete(message.id);
+
+            const winnerId = battle.winner;
+            const winnerData = battle.participants.get(winnerId);
+
+            const winDescription = battle.style === 'chaotic' || battle.style === 'starry'
+                ? `🏆 Winner: **<@${winnerId}>**`
+                : `🏆 Winner: **<@${winnerId}>** with **${winnerData?.hp || 0} HP** remaining!`;
+
+            const winEmbed = new EmbedBuilder()
+                .setColor(0x00FF00)
+                .setTitle('⚔️ Battle - Game Over!')
+                .setDescription(winDescription)
+                .addFields({ name: '🎮 Style', value: `${style.emoji} ${style.name}` })
+                .setTimestamp();
+
+            try {
+                await message.edit({
+                    content: `🎉 **<@${winnerId}>** WINS THE BATTLE!`,
+                    embeds: [winEmbed],
+                    components: []
+                });
+                console.log('✅ Battle winner announced (safety check)');
+            } catch (err) {
+                console.error('❌ Failed to edit winner message:', err.message);
+            }
+            return;
         }
 
         // ✅ CHECK WINNER after round
@@ -1883,18 +1923,99 @@ async function startBattleRound(message, battle) {
                     console.log('✅ Battle winner announced successfully');
                 } catch (err) {
                     console.error('❌ Failed to edit message for winner:', err.message);
+                    // ✅ Fallback: send new message if edit fails
+                    try {
+                        await message.channel.send({
+                            content: `🎉 **<@${battle.winner}>** WINS THE BATTLE!`,
+                            embeds: [winEmbed]
+                        });
+                    } catch (sendErr) {
+                        console.error('❌ Failed to send winner message:', sendErr.message);
+                    }
                 }
+            }
+            return;
+        }
+
+        // ✅ SAFETY: If no players left (all died), end battle
+        if (aliveArray.length === 0) {
+            console.log('💀 All players eliminated - ending battle');
+            battle.active = false;
+            battle.winner = null;
+
+            await Battle.findOneAndUpdate({ messageId: message.id }, {
+                winner: null,
+                active: false,
+                round: battle.round
+            }).catch(console.error);
+
+            activeBattles.delete(message.id);
+
+            const noWinnerEmbed = new EmbedBuilder()
+                .setColor(0xFF0000)
+                .setTitle('⚔️ Battle - No Winner!')
+                .setDescription('💀 All fighters have been eliminated! No one survives.')
+                .addFields({ name: '🎮 Style', value: `${style.emoji} ${style.name}` })
+                .setTimestamp();
+
+            try {
+                await message.edit({
+                    content: '💀 **NO SURVIVORS!**',
+                    embeds: [noWinnerEmbed],
+                    components: []
+                });
+            } catch (err) {
+                console.error('❌ Failed to edit no-winner message:', err.message);
             }
             return;
         }
 
         if (battle.alive.size > 1 && battle.active) {
             console.log(`⏳ Next round in ${roundDelay/1000}s... (${battle.alive.size} players alive)`);
-            setTimeout(() => {
+            
+            // ✅ SAFETY TIMEOUT: Prevent battle from freezing
+            const maxWaitTime = Math.max(roundDelay, 30000); // At least 30 seconds
+            const safetyTimeout = setTimeout(() => {
+                const frozenBattle = activeBattles.get(message.id);
+                if (frozenBattle && frozenBattle.active) {
+                    console.log('⚠️ Battle appears frozen - forcing end');
+                    frozenBattle.active = false;
+                    
+                    // If there's still a player alive, declare them winner
+                    if (frozenBattle.alive.size > 0) {
+                        frozenBattle.winner = Array.from(frozenBattle.alive)[0];
+                    }
+                    
+                    Battle.findOneAndUpdate({ messageId: message.id }, {
+                        winner: frozenBattle.winner,
+                        active: false,
+                        round: frozenBattle.round
+                    }).catch(console.error);
+                    
+                    activeBattles.delete(message.id);
+                    
+                    const safetyEmbed = new EmbedBuilder()
+                        .setColor(0xFFA500)
+                        .setTitle('⚔️ Battle Ended')
+                        .setDescription('⚠️ Battle ended due to inactivity timeout')
+                        .setFooter({ text: 'Maximum round time exceeded' })
+                        .setTimestamp();
+                    
+                    message.edit({
+                        content: frozenBattle.winner ? `⚠️ **<@${frozenBattle.winner}>** wins by default!` : '⚠️ **Battle ended - no survivors!**',
+                        embeds: [safetyEmbed],
+                        components: []
+                    }).catch(console.error);
+                }
+            }, maxWaitTime * 2); // Double the normal wait time as safety
+
+            const roundTimeout = setTimeout(() => {
                 const freshBattle = activeBattles.get(message.id);
                 if (freshBattle?.active && freshBattle.alive.size > 1) {
+                    clearTimeout(safetyTimeout); // Cancel safety timeout if round starts
                     startBattleRound(message, freshBattle);
                 } else if (freshBattle?.alive.size === 1) {
+                    clearTimeout(safetyTimeout); // Cancel safety timeout
                     console.log('🏆 Winner detected before next round!', Array.from(freshBattle.alive)[0]);
                 }
             }, roundDelay);
