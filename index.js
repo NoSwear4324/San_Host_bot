@@ -151,6 +151,12 @@ const TIER_ORDER = ['community', 'plus', 'super', 'ultra', 'ultimate', 'extreme'
 function canHostInChannel(userType, channelType) {
     const userTier = TIER_ORDER.indexOf(userType);
     const channelTier = TIER_ORDER.indexOf(channelType);
+    
+    // If either tier is not found, deny hosting
+    if (userTier === -1 || channelTier === -1) {
+        return false;
+    }
+    
     return userTier >= channelTier; // higher or equal tier can host
 }
 
@@ -585,13 +591,38 @@ client.on(Events.MessageCreate, async (message) => {
                 }
             }
 
+            // Check if this is a valid event channel
+            if (!channelType) {
+                return message.reply(`❌ This command can only be used in event channels!`);
+            }
+
             // Check if user can host in this channel (higher tiers can host in lower tier channels)
             if (!canHostInChannel(type, channelType)) {
+                const userTierIndex = TIER_ORDER.indexOf(type);
+                const channelTierIndex = TIER_ORDER.indexOf(channelType);
+                const requiredTier = TIER_ORDER[channelTierIndex];
+                
+                if (userTierIndex < channelTierIndex) {
+                    return message.reply(`❌ You need at least **${EVENT_TYPES[requiredTier]?.name}** role to host in this channel!\nHigher tier players can host in lower tier channels.`);
+                }
+                
                 return message.reply(`❌ You can't host ${cfg.name} events in this channel!`);
             }
 
-            if (!message.member?.roles.cache.has(EVENT_ROLES[type])) {
-                return message.reply(`❌ You need the **${cfg.name}** role`);
+            // Check if user has required tier role (higher tiers can host lower tier events)
+            const requiredTierIndex = TIER_ORDER.indexOf(type);
+            let hasRequiredRole = false;
+            
+            for (let i = requiredTierIndex; i < TIER_ORDER.length; i++) {
+                const tierType = TIER_ORDER[i];
+                if (message.member?.roles.cache.has(EVENT_ROLES[tierType])) {
+                    hasRequiredRole = true;
+                    break;
+                }
+            }
+            
+            if (!hasRequiredRole) {
+                return message.reply(`❌ You need at least the **${cfg.name}** role to host this event!`);
             }
 
             // Check if user is blacklisted from hosting
