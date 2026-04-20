@@ -822,7 +822,7 @@ client.on(Events.MessageCreate, async (message) => {
             return message.reply({ embeds: [embed], ephemeral: true });
         }
 
-    // === ADMIN: blacklist ===
+     // === ADMIN: blacklist ===
     if (cmd === 'blacklist') {
         if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
             return message.react('🚫');
@@ -886,6 +886,24 @@ client.on(Events.MessageCreate, async (message) => {
                                  remainingMs < 3600000 ? `${Math.ceil(remainingMs/60000)}m` :
                                  remainingMs < 86400000 ? `${Math.ceil(remainingMs/3600000)}h` :
                                  `${Math.ceil(remainingMs/86400000)}d`;
+
+                // 🔔 Notify user on extension
+                try {
+                    const dmEmbed = new EmbedBuilder()
+                        .setColor(0xFFA500)
+                        .setTitle('⏱️ Blacklist Extended')
+                        .setDescription(`Your event hosting restriction has been extended.`)
+                        .addFields(
+                            { name: '⏳ Remaining Time', value: `**${timeText}**`, inline: true },
+                            { name: '📝 Reason', value: `\`${reason}\``, inline: true }
+                        )
+                        .setFooter({ text: 'Restriction will auto-remove when time expires.' })
+                        .setTimestamp();
+                    await user.send({ embeds: [dmEmbed] });
+                } catch (dmErr) {
+                    console.log(`⚠️ Could not DM ${user.tag} (DMs closed).`);
+                }
+
                 return message.reply(`⏱️ <@${user.id}> blacklist extended. **${timeText}** added.\n📝 Reason: \`${reason}\``);
             } else {
                 // Not blacklisted: add role & set initial timer
@@ -911,7 +929,25 @@ client.on(Events.MessageCreate, async (message) => {
                                  durationMs < 3600000 ? `${Math.ceil(durationMs/60000)}m` :
                                  durationMs < 86400000 ? `${Math.ceil(durationMs/3600000)}h` :
                                  `${Math.ceil(durationMs/86400000)}d`;
-                return message.reply(`🚫 <@${user.id}> has been **blacklisted** for **${timeText}**.\n📝 Reason: \`${reason}\``);
+
+                // 🔔 Notify user on initial blacklist
+                try {
+                    const dmEmbed = new EmbedBuilder()
+                        .setColor(0xFF0000)
+                        .setTitle('🚫 Hosting Blacklist')
+                        .setDescription(`You have been temporarily restricted from hosting events.`)
+                        .addFields(
+                            { name: '⏳ Duration', value: `**${timeText}**`, inline: true },
+                            { name: '📝 Reason', value: `\`${reason}\``, inline: true }
+                        )
+                        .setFooter({ text: 'The role will be automatically removed when the time expires.' })
+                        .setTimestamp();
+                    await user.send({ embeds: [dmEmbed] });
+                } catch (dmErr) {
+                    console.log(`⚠️ Could not DM ${user.tag} (DMs closed).`);
+                }
+
+                return message.reply(`<@${user.id}> has been **blacklisted** for **${timeText}**.\n📝 Reason: \`${reason}\``);
             }
         } catch (err) {
             console.error('Blacklist role error:', err.message);
