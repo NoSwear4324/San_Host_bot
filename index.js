@@ -141,7 +141,7 @@ const PING_ROLES = {
     ultra: '1480533781612855437', ultimate: '1480533827108602089', extreme: '1480533870909587508', godly: '1480533912127017043'
 };
 
-const ADMIN_ROLES = ['1475552294203424880', '1475552827626619050'];
+const ADMIN_ROLES = ['1475552294203424880', '1475552827626619050', '1493251166719578233', '1495665543234060409', '1495665703670255626'];
 const HOST_BLACKLIST_ROLE = '1482828757965340978'; // Replace with actual blacklist role ID
 
 // Tiers in ascending order (higher tier can host in lower tier channels)
@@ -828,7 +828,7 @@ client.on(Events.MessageCreate, async (message) => {
             return message.react('🚫');
         }
         const user = message.mentions.users.first();
-        if (!user) return message.reply('❌ Usage: `-blacklist @user <duration>` (e.g., `1m`, `2h`, `1d`)');
+        if (!user) return message.reply('❌ Usage: `-blacklist @user <duration> [reason]` (e.g., `1m spam`, `2h toxicity`)');
 
         const guild = message.guild;
         const member = guild.members.cache.get(user.id) || await guild.members.fetch(user.id).catch(() => null);
@@ -837,7 +837,7 @@ client.on(Events.MessageCreate, async (message) => {
         const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
         if (!role) return message.reply('❌ Blacklist role not configured in bot settings.');
 
-        // FIX: args[0] = mention, args[1] = duration
+        // Parse duration (args[1])
         const durationStr = args[1];
         let durationMs = 24 * 60 * 60 * 1000; // Default 24h
         if (durationStr) {
@@ -850,10 +850,14 @@ client.on(Events.MessageCreate, async (message) => {
             else if (unit === 'd') durationMs = amount * 24 * 60 * 60 * 1000;
         }
 
+        // Parse reason (args[2] and beyond)
+        const reason = args.slice(2).join(' ') || 'No reason provided';
+
         if (!global.blacklistTimers) global.blacklistTimers = new Map();
 
         try {
             if (member.roles.cache.has(HOST_BLACKLIST_ROLE)) {
+                // Already blacklisted: extend remaining time
                 const existing = global.blacklistTimers.get(user.id);
                 let remainingMs = durationMs;
                 if (existing) {
@@ -876,14 +880,15 @@ client.on(Events.MessageCreate, async (message) => {
                     }
                 }, remainingMs);
 
-                global.blacklistTimers.set(user.id, { timeoutId: newTimeoutId, expiresAt: newExpiresAt });
+                global.blacklistTimers.set(user.id, { timeoutId: newTimeoutId, expiresAt: newExpiresAt, reason });
 
                 const timeText = remainingMs < 60000 ? `${Math.ceil(remainingMs/1000)}s` :
                                  remainingMs < 3600000 ? `${Math.ceil(remainingMs/60000)}m` :
                                  remainingMs < 86400000 ? `${Math.ceil(remainingMs/3600000)}h` :
                                  `${Math.ceil(remainingMs/86400000)}d`;
-                return message.reply(`⏱️ <@${user.id}> is already blacklisted. **${timeText}** added.`);
+                return message.reply(`⏱️ <@${user.id}> blacklist extended. **${timeText}** added.\n📝 Reason: \`${reason}\``);
             } else {
+                // Not blacklisted: add role & set initial timer
                 await member.roles.add(role);
                 const expiresAt = Date.now() + durationMs;
                 const timeoutId = setTimeout(async () => {
@@ -900,13 +905,13 @@ client.on(Events.MessageCreate, async (message) => {
                     }
                 }, durationMs);
 
-                global.blacklistTimers.set(user.id, { timeoutId, expiresAt });
+                global.blacklistTimers.set(user.id, { timeoutId, expiresAt, reason });
 
                 const timeText = durationMs < 60000 ? `${Math.ceil(durationMs/1000)}s` :
                                  durationMs < 3600000 ? `${Math.ceil(durationMs/60000)}m` :
                                  durationMs < 86400000 ? `${Math.ceil(durationMs/3600000)}h` :
                                  `${Math.ceil(durationMs/86400000)}d`;
-                return message.reply(`🚫 <@${user.id}> has been **temporarily blacklisted** for **${timeText}**.`);
+                return message.reply(`🚫 <@${user.id}> has been **blacklisted** for **${timeText}**.\n📝 Reason: \`${reason}\``);
             }
         } catch (err) {
             console.error('Blacklist role error:', err.message);
