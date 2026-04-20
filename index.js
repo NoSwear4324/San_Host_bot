@@ -813,7 +813,7 @@ client.on(Events.MessageCreate, async (message) => {
                     { name: '\u200b', value: '\u200b', inline: true },
                     { name: '📊 Statistics', value: '`-status [@user]` — View host statistics\n`-toprating` — Top hosts by rating', inline: false },
                     { name: '🎮 Games', value: '`-ttt @user` — Tic-Tac-Toe\n`-battle [time]` — Battle\n`-hilo [time]` — HILO', inline: false },
-                    { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count', inline: false },
+                    { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count\n`-blacklist @user  <time >` — Temp blacklist hosting (stacks if used again)', inline: false },
                     { name: '❓ Help', value: '`-help` — Show this message', inline: false }
                 )
                 .setFooter({ text: `Requested by ${message.author.tag}` })
@@ -821,6 +821,101 @@ client.on(Events.MessageCreate, async (message) => {
 
             return message.reply({ embeds: [embed], ephemeral: true });
         }
+
+            // === ADMIN: blacklist ===
+    if (cmd === 'blacklist') {
+        if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
+            return message.react('🚫');
+        }
+        const user = message.mentions.users.first();
+        if (!user) return message.reply('❌ Usage: `-blacklist @user <duration>` (e.g., `1h`, `30m`, `1d`)');
+
+        const guild = message.guild;
+        const member = guild.members.cache.get(user.id) || await guild.members.fetch(user.id).catch(() => null);
+        if (!member) return message.reply('❌ User not found in this server.');
+
+        const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
+        if (!role) return message.reply('❌ Blacklist role not configured in bot settings.');
+
+        // Parse duration (default: 24h)
+        const durationStr = args[0];
+        let durationMs = 24 * 60 * 60 * 1000;
+        if (durationStr) {
+            const match = durationStr.match(/^(\d+)([mhd])?$/i);
+            if (!match) return message.reply('❌ Invalid duration format. Use: `10m`, `2h`, `1d`');
+            const amount = parseInt(match[1]);
+            const unit = match[2]?.toLowerCase() || 'm';
+            if (unit === 'm') durationMs = amount * 60 * 1000;
+            else if (unit === 'h') durationMs = amount * 60 * 60 * 1000;
+            else if (unit === 'd') durationMs = amount * 24 * 60 * 60 * 1000;
+        }
+
+        if (!global.blacklistTimers) global.blacklistTimers = new Map();
+
+        try {
+            if (member.roles.cache.has(HOST_BLACKLIST_ROLE)) {
+                // Already blacklisted: extend remaining time
+                const existing = global.blacklistTimers.get(user.id);
+                let remainingMs = durationMs;
+                if (existing) {
+                    clearTimeout(existing.timeoutId);
+                    remainingMs = Math.max(0, existing.expiresAt - Date.now()) + durationMs;
+                }
+
+                const newExpiresAt = Date.now() + remainingMs;
+                const newTimeoutId = setTimeout(async () => {
+                    try {
+                        const mem = await guild.members.fetch(user.id).catch(() => null);
+                        if (mem && mem.roles.cache.has(HOST_BLACKLIST_ROLE)) {
+                            await mem.roles.remove(role);
+                            console.log(`⏳ Temporary blacklist for ${user.tag} expired.`);
+                        }
+                    } catch (e) {
+                        console.error('❌ Failed to auto-remove blacklist role:', e.message);
+                    } finally {
+                        global.blacklistTimers.delete(user.id);
+                    }
+                }, remainingMs);
+
+                global.blacklistTimers.set(user.id, { timeoutId: newTimeoutId, expiresAt: newExpiresAt });
+
+                const timeText = remainingMs < 60000 ? `${Math.ceil(remainingMs/1000)}s` :
+                                 remainingMs < 3600000 ? `${Math.ceil(remainingMs/60000)}m` :
+                                 remainingMs < 86400000 ? `${Math.ceil(remainingMs/3600000)}h` :
+                                 `${Math.ceil(remainingMs/86400000)}d`;
+                return message.reply(`⏱️ <@${user.id}> is already blacklisted. **${timeText}** added to their remaining time.`);
+            } else {
+                // Not blacklisted: add role & set initial timer
+                await member.roles.add(role);
+                const expiresAt = Date.now() + durationMs;
+                const timeoutId = setTimeout(async () => {
+                    try {
+                        const mem = await guild.members.fetch(user.id).catch(() => null);
+                        if (mem && mem.roles.cache.has(HOST_BLACKLIST_ROLE)) {
+                            await mem.roles.remove(role);
+                            console.log(`⏳ Temporary blacklist for ${user.tag} expired.`);
+                        }
+                    } catch (e) {
+                        console.error('❌ Failed to auto-remove blacklist role:', e.message);
+                    } finally {
+                        global.blacklistTimers.delete(user.id);
+                    }
+                }, durationMs);
+
+                global.blacklistTimers.set(user.id, { timeoutId, expiresAt });
+
+                const timeText = durationMs < 60000 ? `${Math.ceil(durationMs/1000)}s` :
+                                 durationMs < 3600000 ? `${Math.ceil(durationMs/60000)}m` :
+                                 durationMs < 86400000 ? `${Math.ceil(durationMs/3600000)}h` :
+                                 `${Math.ceil(durationMs/86400000)}d`;
+                return message.reply(`🚫 <@${user.id}> has been **temporarily blacklisted** for **${timeText}**.`);
+            }
+        } catch (err) {
+            console.error('Blacklist role error:', err.message);
+            return message.reply('❌ Failed to update role. Check bot permissions and role hierarchy.');
+        }
+    }
+
 
         // ────────────────────────────────────────────────
         // TIC-TAC-TOE COMMAND 🔥 FIX — Вход работает
