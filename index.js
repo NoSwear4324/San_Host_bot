@@ -813,7 +813,7 @@ client.on(Events.MessageCreate, async (message) => {
                     { name: '\u200b', value: '\u200b', inline: true },
                     { name: '📊 Statistics', value: '`-status [@user]` — View host statistics\n`-toprating` — Top hosts by rating', inline: false },
                     { name: '🎮 Games', value: '`-ttt @user` — Tic-Tac-Toe\n`-battle [time]` — Battle\n`-hilo [time]` — HILO', inline: false },
-                    { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count\n`-blacklist @user  <time >` — Temp blacklist hosting (stacks if used again)', inline: false },
+                    { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count\n`-blacklist @user <time >` — Temp blacklist hosting (stacks if used again)', inline: false },
                     { name: '❓ Help', value: '`-help` — Show this message', inline: false }
                 )
                 .setFooter({ text: `Requested by ${message.author.tag}` })
@@ -822,13 +822,13 @@ client.on(Events.MessageCreate, async (message) => {
             return message.reply({ embeds: [embed], ephemeral: true });
         }
 
-            // === ADMIN: blacklist ===
+    // === ADMIN: blacklist ===
     if (cmd === 'blacklist') {
         if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
             return message.react('🚫');
         }
         const user = message.mentions.users.first();
-        if (!user) return message.reply('❌ Usage: `-blacklist @user <duration>` (e.g., `1h`, `30m`, `1d`)');
+        if (!user) return message.reply('❌ Usage: `-blacklist @user <duration>` (e.g., `1m`, `2h`, `1d`)');
 
         const guild = message.guild;
         const member = guild.members.cache.get(user.id) || await guild.members.fetch(user.id).catch(() => null);
@@ -837,12 +837,12 @@ client.on(Events.MessageCreate, async (message) => {
         const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
         if (!role) return message.reply('❌ Blacklist role not configured in bot settings.');
 
-        // Parse duration (default: 24h)
-        const durationStr = args[0];
-        let durationMs = 24 * 60 * 60 * 1000;
+        // FIX: args[0] = mention, args[1] = duration
+        const durationStr = args[1];
+        let durationMs = 24 * 60 * 60 * 1000; // Default 24h
         if (durationStr) {
             const match = durationStr.match(/^(\d+)([mhd])?$/i);
-            if (!match) return message.reply('❌ Invalid duration format. Use: `10m`, `2h`, `1d`');
+            if (!match) return message.reply('❌ Invalid duration. Use: `10m`, `2h`, `1d`');
             const amount = parseInt(match[1]);
             const unit = match[2]?.toLowerCase() || 'm';
             if (unit === 'm') durationMs = amount * 60 * 1000;
@@ -854,7 +854,6 @@ client.on(Events.MessageCreate, async (message) => {
 
         try {
             if (member.roles.cache.has(HOST_BLACKLIST_ROLE)) {
-                // Already blacklisted: extend remaining time
                 const existing = global.blacklistTimers.get(user.id);
                 let remainingMs = durationMs;
                 if (existing) {
@@ -883,9 +882,8 @@ client.on(Events.MessageCreate, async (message) => {
                                  remainingMs < 3600000 ? `${Math.ceil(remainingMs/60000)}m` :
                                  remainingMs < 86400000 ? `${Math.ceil(remainingMs/3600000)}h` :
                                  `${Math.ceil(remainingMs/86400000)}d`;
-                return message.reply(`⏱️ <@${user.id}> is already blacklisted. **${timeText}** added to their remaining time.`);
+                return message.reply(`⏱️ <@${user.id}> is already blacklisted. **${timeText}** added.`);
             } else {
-                // Not blacklisted: add role & set initial timer
                 await member.roles.add(role);
                 const expiresAt = Date.now() + durationMs;
                 const timeoutId = setTimeout(async () => {
