@@ -863,25 +863,40 @@ if (cmd === 'blacklist') {
     }
 
     const reason = args.slice(2).join(' ') || 'No reason';
+    const userId = user.id;
+    const roleId = role.id;
+    const guildId = guild.id;
 
     try {
-        // Add role
         await member.roles.add(role);
         
-        // Set timeout to remove role
+        // Сохраняем переменные для setTimeout
         setTimeout(async () => {
             try {
-                const member = await guild.members.fetch(user.id).catch(() => null);
-                if (member && member.roles.cache.has(role.id)) {
+                const guild = client.guilds.cache.get(guildId);
+                if (!guild) return;
+                
+                const member = await guild.members.fetch(userId).catch(() => null);
+                if (!member) return;
+                
+                const role = guild.roles.cache.get(roleId);
+                if (!role) return;
+                
+                if (member.roles.cache.has(roleId)) {
                     await member.roles.remove(role);
-                    console.log(`✅ Removed blacklist from ${user.tag}`);
+                    console.log(`✅ Auto-removed blacklist from ${userId}`);
+                    
+                    // Optional: notify user
+                    try {
+                        const user = await client.users.fetch(userId);
+                        await user.send(`✅ Your host blacklist has been removed.`);
+                    } catch (e) {}
                 }
             } catch (err) {
-                console.error('Error removing role:', err.message);
+                console.error('❌ Error auto-removing blacklist:', err.message);
             }
         }, durationMs);
 
-        // Send message
         const embed = new EmbedBuilder()
             .setColor(0xED4245)
             .setDescription(`🔒 ${user} has been host blacklisted for **${durationText}**.\n**Reason:** ${reason}`)
