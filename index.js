@@ -824,6 +824,7 @@ client.on(Events.MessageCreate, async (message) => {
 
 // === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
+    // 1. Проверка прав
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
         return message.react('🚫');
     }
@@ -833,55 +834,61 @@ if (cmd === 'blacklist') {
     const reason = args.slice(2).join(' ') || 'No reason';
 
     if (!user || !durationStr) {
-        return message.reply('❌ Usage: `-blacklist @user <duration> [reason]`');
+        return message.reply('❌ Usage: `-blacklist @user 30s reason`');
     }
 
     const guild = message.guild;
     const targetId = user.id;
-    const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
-    
-    if (!role) return message.reply('❌ Blacklist role not found!');
 
-    // 1. Парсим время
+    // 2. Поиск роли и участника
+    const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
+    const member = guild.members.cache.get(targetId) || await guild.members.fetch(targetId).catch(() => null);
+    
+    if (!role) return message.reply(`❌ Role ID ${HOST_BLACKLIST_ROLE} not found!`);
+    if (!member) return message.reply('❌ User not found.');
+
+    // 3. Расчет времени (секунды, минуты, часы, дни)
     const match = durationStr.match(/^(\d+)([smhd])?$/i);
-    if (!match) return message.reply('❌ Invalid duration (30s, 10m, 1h)');
+    if (!match) return message.reply('❌ Invalid time format (use 30s, 5m, etc)');
 
     const amount = parseInt(match[1]);
     const unit = (match[2] || 'm').toLowerCase();
     const multipliers = { 's': 1000, 'm': 60000, 'h': 3600000, 'd': 86400000 };
     const durationMs = amount * multipliers[unit];
 
-    // ИСПРАВЛЕННЫЙ TIMESTAMP (делим на 1000)
-    const expirationTime = Math.floor((Date.now() + durationMs) / 1000);
-
     try {
-        const member = await guild.members.fetch(targetId).catch(() => null);
-        if (!member) return message.reply('❌ User not found.');
-
+        // 4. ВЫДАЧА РОЛИ
         await member.roles.add(role);
+        console.log(`[BLACKLIST] Role added to ${user.tag}. Duration: ${durationMs}ms`);
 
-        // Отправка сообщения: <t:ВРЕМЯ:R> — это "относительный" формат (Relative)
-        await message.channel.send(`🔒 **${user.tag}** host blacklisted.\n⌛ **Ends:** <t:${expirationTime}:R>\n📝 **Reason:** ${reason}`);
+        // Отправка обычным текстом (как ты просил)
+        const expirationTime = Math.floor((Date.now() + durationMs) / 1000);
+        await message.channel.send(`🔒 **${user.tag}** has been host blacklisted. Ends: <t:${expirationTime}:R>. Reason: ${reason}`);
 
-        if (message.deletable) await message.delete().catch(() => null);
-
-        // 2. Таймер на снятие
+        // 5. ТАЙМЕР НА СНЯТИЕ
         setTimeout(async () => {
             try {
+                console.log(`[TIMER] Attempting to remove role from ${targetId}...`);
+                
+                // Важно: принудительно обновляем данные участника из API Дискорда
                 const freshMember = await guild.members.fetch(targetId).catch(() => null);
-                if (freshMember && freshMember.roles.cache.has(HOST_BLACKLIST_ROLE)) {
+                
+                if (freshMember) {
                     await freshMember.roles.remove(role, 'Blacklist expired');
-                    // Опционально: уведомление в чат о снятии
+                    console.log(`[TIMER SUCCESS] Role removed from ${freshMember.user.tag}`);
+                    // Можно раскомментировать строку ниже, чтобы бот писал в чат, когда время вышло
                     // await message.channel.send(`✅ Blacklist expired for **${freshMember.user.tag}**.`);
+                } else {
+                    console.log(`[TIMER INFO] Member left the server.`);
                 }
-            } catch (e) {
-                console.error('[TIMER ERROR]', e.message);
+            } catch (timerErr) {
+                console.error(`[TIMER ERROR] Could not remove role: ${timerErr.message}`);
             }
         }, durationMs);
 
     } catch (err) {
-        console.error('[ERROR]', err.message);
-        return message.reply(`❌ Failed to add role: ${err.message}`);
+        console.error(`[EXECUTION ERROR] ${err.message}`);
+        return message.reply(`❌ Error: ${err.message}`);
     }
 }
 
