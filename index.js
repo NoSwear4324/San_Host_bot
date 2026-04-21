@@ -824,8 +824,10 @@ client.on(Events.MessageCreate, async (message) => {
 
 // === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
-    // 1. Permission Check
+    console.log(`[COMMAND] Blacklist triggered by ${message.author.tag}`);
+
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
+        console.log(`[AUTH] ${message.author.tag} failed permission check.`);
         return message.react('🚫');
     }
     
@@ -833,79 +835,46 @@ if (cmd === 'blacklist') {
     if (!user) return message.reply('❌ Usage: `-blacklist @user <duration> [reason]`');
 
     const guild = message.guild;
-    const targetId = user.id; // Store ID as a string to prevent "null" property errors
+    const targetId = user.id;
     const member = guild.members.cache.get(targetId) || await guild.members.fetch(targetId).catch(() => null);
     
-    if (!member) return message.reply('❌ User not found in this server.');
+    if (!member) {
+        console.log(`[ERROR] Member ${targetId} not found.`);
+        return message.reply('❌ User not found.');
+    }
 
-    // 2. Role Configuration Check
     const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
     if (!role) {
-        console.error(`[ERROR] Role ID ${HOST_BLACKLIST_ROLE} not found in guild cache!`);
-        return message.reply('❌ Blacklist role not found. Please check your configuration.');
+        console.log(`[CONFIG ERROR] Role ID ${HOST_BLACKLIST_ROLE} is missing from server.`);
+        return message.reply('❌ Blacklist role not found in server settings.');
     }
 
-    // 3. Duration Parsing
-    const durationStr = args[1];
-    let durationMs = 86400000; // Default: 1 day
-    let durationText = '1d';
-    
-    if (durationStr) {
-        const match = durationStr.match(/^(\d+)([mhd])?$/i);
-        if (match) {
-            const amount = parseInt(match[1]);
-            const unit = (match[2] || 'm').toLowerCase();
-            const multipliers = { 'm': 60000, 'h': 3600000, 'd': 86400000 };
-            durationMs = amount * multipliers[unit];
-            durationText = `${amount}${unit}`;
-        } else {
-            return message.reply('❌ Invalid duration format. Use: `10m`, `2h`, `1d`');
-        }
-    }
-
-    const reason = args.slice(2).join(' ') || 'No reason provided';
+    // Short duration for testing (10 seconds if not specified)
+    const durationMs = 10000; 
 
     try {
-        // 4. Add the Role
-        await member.roles.add(role, `Host Blacklist by ${message.author.tag}: ${reason}`);
-        console.log(`[OK] Role added to ${user.tag}. Timer set for ${durationText}`);
+        console.log(`[ATTEMPT] Adding role ${role.name} to ${user.tag}...`);
+        await member.roles.add(role);
+        console.log(`[SUCCESS] Role added. Starting 10s timer.`);
 
-        const embed = new EmbedBuilder()
-            .setColor(0xED4245)
-            .setDescription(`🔒 ${user} has been host blacklisted for **${durationText}**.\n**Reason:** ${reason}`)
-            .setTimestamp();
+        await message.channel.send(`🔒 ${user} blacklisted for 10s (Test).`);
 
-        await message.channel.send({ embeds: [embed] });
-        if (message.deletable) await message.delete().catch(() => null);
-
-        // 5. AUTO-REMOVE TIMER
         setTimeout(async () => {
             try {
-                // Fetch the member again to ensure we have the latest data
+                console.log(`[TIMER] Attempting to remove role from ${targetId}...`);
                 const freshMember = await guild.members.fetch(targetId).catch(() => null);
-                
                 if (freshMember) {
-                    if (freshMember.roles.cache.has(HOST_BLACKLIST_ROLE)) {
-                        await freshMember.roles.remove(role, 'Temporary blacklist expired');
-                        console.log(`[OK] Role automatically removed from ${freshMember.user.tag}`);
-                    } else {
-                        console.log(`[INFO] Role was already removed manually for ${targetId}`);
-                    }
-                } else {
-                    console.log(`[INFO] User ${targetId} is no longer in the guild.`);
+                    await freshMember.roles.remove(role);
+                    console.log(`[SUCCESS] Role removed automatically.`);
                 }
             } catch (e) {
-                console.error(`[ERROR] Failed to auto-remove role: ${e.message}`);
+                console.log(`[TIMER ERROR] ${e.message}`);
             }
         }, durationMs);
 
     } catch (err) {
-        console.error(`[CRITICAL] Role Assignment Error: ${err.message}`);
-        
-        if (err.message.includes('Missing Permissions')) {
-            return message.reply('❌ **Permission Error:** Move the bot\'s role **ABOVE** the Blacklist role in Server Settings!');
-        }
-        return message.reply(`❌ **Error:** ${err.message}`);
+        console.log(`[CRITICAL ERROR] ${err.message}`);
+        return message.reply(`❌ Error: ${err.message}`);
     }
 }
 
