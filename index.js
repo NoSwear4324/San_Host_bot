@@ -813,7 +813,7 @@ client.on(Events.MessageCreate, async (message) => {
                     { name: '\u200b', value: '\u200b', inline: true },
                     { name: '📊 Statistics', value: '`-status [@user]` — View host statistics\n`-toprating` — Top hosts by rating', inline: false },
                     { name: '🎮 Games', value: '`-ttt @user` — Tic-Tac-Toe\n`-battle [time]` — Battle\n`-hilo [time]` — HILO', inline: false },
-                    { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count\n`-blacklist @user <time >` — Temp blacklist hosting (stacks if used again)', inline: false },
+                    { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count\n`-blacklist @user <time> <reason>`', inline: false },
                     { name: '❓ Help', value: '`-help` — Show this message', inline: false }
                 )
                 .setFooter({ text: `Requested by ${message.author.tag}` })
