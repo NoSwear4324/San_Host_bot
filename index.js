@@ -824,12 +824,10 @@ client.on(Events.MessageCreate, async (message) => {
 
 // === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
-    // 1. Permission Check
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
         return message.react('🚫');
     }
     
-    // 2. Identify the target
     const user = message.mentions.users.first();
     if (!user) return message.reply('❌ Usage: `-blacklist @user <duration> [reason]`');
 
@@ -837,59 +835,55 @@ if (cmd === 'blacklist') {
     const targetId = user.id;
     const member = guild.members.cache.get(targetId) || await guild.members.fetch(targetId).catch(() => null);
     
-    if (!member) return message.reply('❌ User not found in this server.');
+    if (!member) return message.reply('❌ User not found.');
 
     const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
-    if (!role) return message.reply('❌ Blacklist role not configured in the bot settings.');
+    if (!role) return message.reply('❌ Blacklist role not configured.');
 
-    // 3. Parse Duration (Correctly handling args[1])
-    const durationStr = args[1]; // This should be like "10m" or "1d"
-    let durationMs = 86400000; // Default: 1 day
-    let durationText = '1d';
+    // 1. Парсинг времени (теперь с секундами 's')
+    const durationStr = args[1]; 
+    let durationMs = 0;
     
-    if (durationStr) {
-        const match = durationStr.match(/^(\d+)([mhd])?$/i);
-        if (match) {
-            const amount = parseInt(match[1]);
-            const unit = (match[2] || 'm').toLowerCase();
-            const multipliers = { 'm': 60000, 'h': 3600000, 'd': 86400000 };
-            
-            durationMs = amount * multipliers[unit];
-            durationText = `${amount}${unit}`;
-        } else {
-            // If args[1] isn't a time (e.g. user forgot it), we treat it as part of the reason
-            return message.reply('❌ Please provide a duration (e.g., `10m`, `1h`, `1d`).');
-        }
-    }
+    const match = durationStr?.match(/^(\d+)([smhd])?$/i);
+    if (!match) return message.reply('❌ Invalid duration. Use: `30s`, `10m`, `1h`');
 
-    // 4. Parse Reason (Capture everything AFTER the duration)
-    // We slice from index 2 because: args[0]=@user, args[1]=duration, args[2...]=reason
+    const amount = parseInt(match[1]);
+    const unit = (match[2] || 'm').toLowerCase();
+    
+    const multipliers = {
+        's': 1000,
+        'm': 60000,
+        'h': 3600000,
+        'd': 86400000
+    };
+
+    durationMs = amount * multipliers[unit];
+    
+    // Вычисляем время окончания для Дискорд-таймера (в секундах)
+    const expirationTimestamp = Math.floor((Date.now() + durationMs) / 1000);
+
+    // 2. Парсинг причины
     const reason = args.slice(2).join(' ') || 'No reason provided';
 
     try {
-        // Add the role
         await member.roles.add(role, `Blacklisted by ${message.author.tag}: ${reason}`);
 
-        // Send confirmation
+        // Эмбед с "живым" временем Дискорда
         const embed = new EmbedBuilder()
             .setColor(0xED4245)
-            .setDescription(`🔒 ${user} has been host blacklisted for **${durationText}**.\n**Reason:** ${reason}`)
+            .setDescription(`🔒 ${user} has been host blacklisted.\n\n**Ends:** <t:${expirationTimestamp}:R>\n**Reason:** ${reason}`)
+            .setFooter({ text: `ID: ${targetId}` })
             .setTimestamp();
 
         await message.channel.send({ embeds: [embed] });
-        
-        // Clean up command message
         if (message.deletable) await message.delete().catch(() => null);
 
-        // 5. THE TIMER (The "Auto-Unblacklist" logic)
+        // 3. Таймер на удаление роли
         setTimeout(async () => {
             try {
-                // Fetch fresh member data in case they left/rejoined
                 const freshMember = await guild.members.fetch(targetId).catch(() => null);
-                
                 if (freshMember && freshMember.roles.cache.has(HOST_BLACKLIST_ROLE)) {
                     await freshMember.roles.remove(role, 'Blacklist duration expired');
-                    console.log(`[TIMER] Automatically removed blacklist for ${targetId}`);
                 }
             } catch (e) {
                 console.error('[TIMER ERROR]', e.message);
@@ -898,7 +892,7 @@ if (cmd === 'blacklist') {
 
     } catch (err) {
         console.error('[BLACKLIST ERROR]', err.message);
-        return message.reply(`❌ Failed to apply blacklist. Make sure my role is higher than the Blacklist role!`);
+        return message.reply(`❌ Error: ${err.message}`);
     }
 }
 
