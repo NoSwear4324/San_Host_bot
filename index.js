@@ -824,84 +824,88 @@ client.on(Events.MessageCreate, async (message) => {
 
 // === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
-    // 1. Проверка прав администратора
+    // 1. Permission Check
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
         return message.react('🚫');
     }
     
-    // 2. Определение цели (пользователя)
     const user = message.mentions.users.first();
     if (!user) return message.reply('❌ Usage: `-blacklist @user <duration> [reason]`');
 
     const guild = message.guild;
-    const targetId = user.id; // Сохраняем ID строкой, чтобы избежать ошибки "null (reading 'id')"
+    const targetId = user.id; // Store ID as a string to prevent "null" property errors
     const member = guild.members.cache.get(targetId) || await guild.members.fetch(targetId).catch(() => null);
     
     if (!member) return message.reply('❌ User not found in this server.');
 
-    // 3. Проверка роли блэклиста в конфиге
+    // 2. Role Configuration Check
     const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
-    if (!role) return message.reply('❌ Blacklist role not configured.');
+    if (!role) {
+        console.error(`[ERROR] Role ID ${HOST_BLACKLIST_ROLE} not found in guild cache!`);
+        return message.reply('❌ Blacklist role not found. Please check your configuration.');
+    }
 
-    // 4. Парсинг длительности
+    // 3. Duration Parsing
     const durationStr = args[1];
-    let durationMs = 24 * 60 * 60 * 1000; // По умолчанию 1 день
+    let durationMs = 86400000; // Default: 1 day
     let durationText = '1d';
     
     if (durationStr) {
         const match = durationStr.match(/^(\d+)([mhd])?$/i);
-        if (!match) return message.reply('❌ Invalid duration. Use: `10m`, `2h`, `1d`');
-        
-        const amount = parseInt(match[1]);
-        const unit = (match[2] || 'm').toLowerCase();
-        
-        const multipliers = {
-            'm': 60 * 1000,
-            'h': 60 * 60 * 1000,
-            'd': 24 * 60 * 60 * 1000
-        };
-
-        durationMs = amount * multipliers[unit];
-        durationText = `${amount}${unit}`;
+        if (match) {
+            const amount = parseInt(match[1]);
+            const unit = (match[2] || 'm').toLowerCase();
+            const multipliers = { 'm': 60000, 'h': 3600000, 'd': 86400000 };
+            durationMs = amount * multipliers[unit];
+            durationText = `${amount}${unit}`;
+        } else {
+            return message.reply('❌ Invalid duration format. Use: `10m`, `2h`, `1d`');
+        }
     }
 
-    // 5. Причина
-    const reason = args.slice(2).join(' ') || 'No reason';
+    const reason = args.slice(2).join(' ') || 'No reason provided';
 
     try {
-        // Добавляем роль пользователю
-        await member.roles.add(role, `Blacklist by ${message.author.tag}: ${reason}`);
-        
-        // Красивый ответ (Embed)
+        // 4. Add the Role
+        await member.roles.add(role, `Host Blacklist by ${message.author.tag}: ${reason}`);
+        console.log(`[OK] Role added to ${user.tag}. Timer set for ${durationText}`);
+
         const embed = new EmbedBuilder()
-            .setColor(0xED4245) 
+            .setColor(0xED4245)
             .setDescription(`🔒 ${user} has been host blacklisted for **${durationText}**.\n**Reason:** ${reason}`)
             .setTimestamp();
 
         await message.channel.send({ embeds: [embed] });
-        
-        // Удаляем команду юзера, если есть права
         if (message.deletable) await message.delete().catch(() => null);
 
-        // 6. ТАЙМЕР НА СНЯТИЕ РОЛИ
+        // 5. AUTO-REMOVE TIMER
         setTimeout(async () => {
             try {
-                // Пытаемся заново получить объект участника (свежие данные из Discord)
+                // Fetch the member again to ensure we have the latest data
                 const freshMember = await guild.members.fetch(targetId).catch(() => null);
                 
-                // Если юзер на сервере и у него всё ещё есть эта роль
-                if (freshMember && freshMember.roles.cache.has(HOST_BLACKLIST_ROLE)) {
-                    await freshMember.roles.remove(role, 'Temporary blacklist expired');
-                    console.log(`[LOG] Blacklist expired for ${targetId}`);
+                if (freshMember) {
+                    if (freshMember.roles.cache.has(HOST_BLACKLIST_ROLE)) {
+                        await freshMember.roles.remove(role, 'Temporary blacklist expired');
+                        console.log(`[OK] Role automatically removed from ${freshMember.user.tag}`);
+                    } else {
+                        console.log(`[INFO] Role was already removed manually for ${targetId}`);
+                    }
+                } else {
+                    console.log(`[INFO] User ${targetId} is no longer in the guild.`);
                 }
             } catch (e) {
-                console.error('Failed to auto-remove blacklist role:', e.message);
+                console.error(`[ERROR] Failed to auto-remove role: ${e.message}`);
             }
         }, durationMs);
 
     } catch (err) {
-        console.error('Blacklist error:', err.message);
-        return message.reply('❌ Failed to blacklist user. Check if my role is ABOVE the blacklist role.');
+        console.error(`[CRITICAL] Role Assignment Error: ${err.message}`);
+        
+        if (err.message.includes('Missing Permissions')) {
+            return message.reply('❌ **Permission Error:** Move the bot\'s role **ABOVE** the Blacklist role in Server Settings!');
+        }
+        return message.reply(`❌ **Error:** ${err.message}`);
     }
 }
 
