@@ -822,7 +822,7 @@ client.on(Events.MessageCreate, async (message) => {
             return message.reply({ embeds: [embed], ephemeral: true });
         }
 
-    // === ADMIN: blacklist ===
+// === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
         return message.react('🚫');
@@ -840,57 +840,57 @@ if (cmd === 'blacklist') {
 
     // Parse duration
     const durationStr = args[1];
-    let durationMs = 24 * 60 * 60 * 1000; // Default 1d
+    let durationMs = 24 * 60 * 60 * 1000; 
     let durationText = '1d';
     
     if (durationStr) {
         const match = durationStr.match(/^(\d+)([mhd])?$/i);
         if (!match) return message.reply('❌ Invalid duration. Use: `10m`, `2h`, `1d`');
         const amount = parseInt(match[1]);
-        const unit = match[2]?.toLowerCase() || 'm';
+        const unit = (match[2] || 'm').toLowerCase();
         
-        if (unit === 'm') {
-            durationMs = amount * 60 * 1000;
-            durationText = `${amount}m`;
-        } else if (unit === 'h') {
-            durationMs = amount * 60 * 60 * 1000;
-            durationText = `${amount}h`;
-        } else if (unit === 'd') {
-            durationMs = amount * 24 * 60 * 60 * 1000;
-            durationText = `${amount}d`;
-        }
+        const multiplier = {
+            'm': 60 * 1000,
+            'h': 60 * 60 * 1000,
+            'd': 24 * 60 * 60 * 1000
+        };
+
+        durationMs = amount * multiplier[unit];
+        durationText = `${amount}${unit}`;
     }
 
-    // Parse reason
     const reason = args.slice(2).join(' ') || 'No reason';
 
     try {
-        await member.roles.add(role);
+        // Добавляем роль
+        await member.roles.add(role, `Blacklist by ${message.author.tag}: ${reason}`);
         
-        // Set timeout to remove role
-        const timeoutId = setTimeout(async () => {
+        const embed = new EmbedBuilder()
+            .setColor(0xED4245)
+            .setDescription(`🔒 ${user} has been host blacklisted for **${durationText}**.\n**Reason:** ${reason}`)
+            .setTimestamp();
+
+        await message.channel.send({ embeds: [embed] });
+        if (message.deletable) await message.delete();
+
+        // Установка таймера на удаление
+        setTimeout(async () => {
             try {
-                const mem = await guild.members.fetch(user.id).catch(() => null);
-                if (mem && mem.roles.cache.has(HOST_BLACKLIST_ROLE)) {
-                    await mem.roles.remove(role);
+                // Важно: заново получаем объект участника, чтобы проверить наличие роли
+                const currentMember = await guild.members.fetch(user.id).catch(() => null);
+                
+                if (currentMember && currentMember.roles.cache.has(HOST_BLACKLIST_ROLE)) {
+                    await currentMember.roles.remove(role, 'Temporary blacklist expired');
+                    console.log(`[Blacklist] Role removed from ${user.tag}`);
                 }
             } catch (e) {
                 console.error('Failed to auto-remove blacklist:', e.message);
             }
         }, durationMs);
-
-        // Send message in screenshot format
-        const embed = new EmbedBuilder()
-            .setColor(0xED4245) // Red color
-            .setDescription(`🔒 ${user} has been host blacklisted for **${durationText}**.\n**Reason:** ${reason}`)
-            .setTimestamp();
-
-        await message.channel.send({ embeds: [embed] });
-        await message.delete(); // Delete command message
         
     } catch (err) {
         console.error('Blacklist error:', err.message);
-        return message.reply('❌ Failed to blacklist user. Check permissions.');
+        return message.reply('❌ Failed to blacklist user. Check role hierarchy.');
     }
 }
 
