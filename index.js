@@ -824,73 +824,84 @@ client.on(Events.MessageCreate, async (message) => {
 
 // === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
+    // 1. Проверка прав администратора
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
         return message.react('🚫');
     }
     
+    // 2. Определение цели (пользователя)
     const user = message.mentions.users.first();
     if (!user) return message.reply('❌ Usage: `-blacklist @user <duration> [reason]`');
 
     const guild = message.guild;
-    const member = guild.members.cache.get(user.id) || await guild.members.fetch(user.id).catch(() => null);
+    const targetId = user.id; // Сохраняем ID строкой, чтобы избежать ошибки "null (reading 'id')"
+    const member = guild.members.cache.get(targetId) || await guild.members.fetch(targetId).catch(() => null);
+    
     if (!member) return message.reply('❌ User not found in this server.');
 
+    // 3. Проверка роли блэклиста в конфиге
     const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
     if (!role) return message.reply('❌ Blacklist role not configured.');
 
-    // Parse duration
+    // 4. Парсинг длительности
     const durationStr = args[1];
-    let durationMs = 24 * 60 * 60 * 1000; 
+    let durationMs = 24 * 60 * 60 * 1000; // По умолчанию 1 день
     let durationText = '1d';
     
     if (durationStr) {
         const match = durationStr.match(/^(\d+)([mhd])?$/i);
         if (!match) return message.reply('❌ Invalid duration. Use: `10m`, `2h`, `1d`');
+        
         const amount = parseInt(match[1]);
         const unit = (match[2] || 'm').toLowerCase();
         
-        const multiplier = {
+        const multipliers = {
             'm': 60 * 1000,
             'h': 60 * 60 * 1000,
             'd': 24 * 60 * 60 * 1000
         };
 
-        durationMs = amount * multiplier[unit];
+        durationMs = amount * multipliers[unit];
         durationText = `${amount}${unit}`;
     }
 
+    // 5. Причина
     const reason = args.slice(2).join(' ') || 'No reason';
 
     try {
-        // Добавляем роль
+        // Добавляем роль пользователю
         await member.roles.add(role, `Blacklist by ${message.author.tag}: ${reason}`);
         
+        // Красивый ответ (Embed)
         const embed = new EmbedBuilder()
-            .setColor(0xED4245)
+            .setColor(0xED4245) 
             .setDescription(`🔒 ${user} has been host blacklisted for **${durationText}**.\n**Reason:** ${reason}`)
             .setTimestamp();
 
         await message.channel.send({ embeds: [embed] });
-        if (message.deletable) await message.delete();
+        
+        // Удаляем команду юзера, если есть права
+        if (message.deletable) await message.delete().catch(() => null);
 
-        // Установка таймера на удаление
+        // 6. ТАЙМЕР НА СНЯТИЕ РОЛИ
         setTimeout(async () => {
             try {
-                // Важно: заново получаем объект участника, чтобы проверить наличие роли
-                const currentMember = await guild.members.fetch(user.id).catch(() => null);
+                // Пытаемся заново получить объект участника (свежие данные из Discord)
+                const freshMember = await guild.members.fetch(targetId).catch(() => null);
                 
-                if (currentMember && currentMember.roles.cache.has(HOST_BLACKLIST_ROLE)) {
-                    await currentMember.roles.remove(role, 'Temporary blacklist expired');
-                    console.log(`[Blacklist] Role removed from ${user.tag}`);
+                // Если юзер на сервере и у него всё ещё есть эта роль
+                if (freshMember && freshMember.roles.cache.has(HOST_BLACKLIST_ROLE)) {
+                    await freshMember.roles.remove(role, 'Temporary blacklist expired');
+                    console.log(`[LOG] Blacklist expired for ${targetId}`);
                 }
             } catch (e) {
-                console.error('Failed to auto-remove blacklist:', e.message);
+                console.error('Failed to auto-remove blacklist role:', e.message);
             }
         }, durationMs);
-        
+
     } catch (err) {
         console.error('Blacklist error:', err.message);
-        return message.reply('❌ Failed to blacklist user. Check role hierarchy.');
+        return message.reply('❌ Failed to blacklist user. Check if my role is ABOVE the blacklist role.');
     }
 }
 
