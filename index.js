@@ -863,13 +863,7 @@ if (cmd === 'blacklist') {
 
         // Отправка обычным текстом (как ты просил)
         const expirationTime = Math.floor((Date.now() + durationMs) / 1000);
-        await message.channel.send(`🔒 **${user}** has been host blacklisted. Ends: <t:${expirationTime}:R>. Reason: ${reason}`);
-
-        // 2. ОТПРАВКА В ЛИЧКУ (DM)
-        await user.send(`⚠️ You have been host blacklisted in **${guild.name}**.\n⌛ **Duration:** ${durationText}\n📝 **Reason:** ${reason}\n📅 **Expires:** <t:${expirationTime}:F>`)
-            .catch(() => console.log(`[DM] Could not send message to ${user.tag} (DMs are closed).`));
-
-        if (message.deletable) await message.delete().catch(() => null);
+        await message.channel.send(`🔒 **${user}** has been host blacklisted. **Ends**: <t:${expirationTime}:R>. **Reason**: ${reason}`);
 
         // 5. ТАЙМЕР НА СНЯТИЕ
         setTimeout(async () => {
