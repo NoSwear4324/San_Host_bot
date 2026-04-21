@@ -863,7 +863,7 @@ if (cmd === 'blacklist') {
 
         // Отправка обычным текстом (как ты просил)
         const expirationTime = Math.floor((Date.now() + durationMs) / 1000);
-        await message.channel.send(`🔒 **${user.mention}** has been host blacklisted. Ends: <t:${expirationTime}:R>. Reason: ${reason}`);
+        await message.channel.send(`🔒 **${user}** has been host blacklisted. Ends: <t:${expirationTime}:R>. Reason: ${reason}`);
 
         // 5. ТАЙМЕР НА СНЯТИЕ
         setTimeout(async () => {
