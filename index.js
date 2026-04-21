@@ -822,9 +822,11 @@ client.on(Events.MessageCreate, async (message) => {
             return message.reply({ embeds: [embed], ephemeral: true });
         }
 
+const { EmbedBuilder } = require('discord.js');
+
 // === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
-    // Проверка прав модератора
+    // 1. Проверка прав модератора
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
         return message.react('🚫');
     }
@@ -833,10 +835,10 @@ if (cmd === 'blacklist') {
     const durationStr = args[1];
     const reason = args.slice(2).join(' ') || 'No reason';
 
-    // Валидация аргументов
     if (!user) return message.reply('❌ Usage: `-blacklist @user <duration> [reason]`');
     if (!durationStr) return message.reply('❌ Specify duration: `1m`, `2h`, `1d`');
 
+    // 2. Парсинг времени
     const match = durationStr.match(/^(\d+)([mhd])$/i);
     if (!match) return message.reply('❌ Invalid duration format (e.g. 10m, 2h, 1d)');
 
@@ -846,42 +848,54 @@ if (cmd === 'blacklist') {
     const durationMs = amount * multipliers[unit];
 
     const guild = message.guild;
-    const member = await guild.members.fetch(user.id).catch(() => null);
-    const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
+    const roleId = HOST_BLACKLIST_ROLE; // Убедись, что это ID (строка)
+    const role = guild.roles.cache.get(roleId);
 
-    if (!member) return message.reply('❌ User not found');
-    if (!role) return message.reply('❌ Blacklist role not found');
+    if (!role) return message.reply('❌ Blacklist role not found in cache. Check ID.');
 
     try {
-        // Выдаем роль
-        await member.roles.add(role);
+        const member = await guild.members.fetch(user.id);
+        
+        // 3. Выдача роли
+        await member.roles.add(role, `Blacklist: ${reason}`);
 
-        // Создаем эмбед как на скрине
+        // Эмбед как на твоем скриншоте
         const embed = new EmbedBuilder()
-            .setColor(0xED4245) // Тот самый красный цвет
+            .setColor(0xED4245)
             .setDescription(`🔒 ${user} has been host blacklisted for **${amount}${unit}**.\n**Reason:** ${reason}`);
 
         await message.channel.send({ embeds: [embed] });
-
-        // Удаляем команду модератора для чистоты чата
         if (message.deletable) await message.delete().catch(() => null);
 
-        // Таймер на снятие роли
+        console.log(`[LOG] Таймер запущен для ${user.tag} на ${durationMs}ms`);
+
+        // 4. ТАЙМЕР СНЯТИЯ
         setTimeout(async () => {
             try {
-                const refreshMember = await guild.members.fetch(user.id).catch(() => null);
-                if (refreshMember && refreshMember.roles.cache.has(role.id)) {
-                    await refreshMember.roles.remove(role);
-                    await user.send(`✅ Your host blacklist in **${guild.name}** has expired.`).catch(() => null);
+                // Пытаемся заново получить объект пользователя, чтобы данные были актуальны
+                const targetMember = await guild.members.fetch(user.id).catch(() => null);
+                
+                if (!targetMember) {
+                    return console.log(`[LOG] Пользователь ${user.id} покинул сервер, снимать роль не с кого.`);
                 }
-            } catch (err) {
-                console.error('Auto-unblacklist error:', err.message);
+
+                if (targetMember.roles.cache.has(roleId)) {
+                    await targetMember.roles.remove(role, 'Temporary blacklist expired');
+                    console.log(`[SUCCESS] Роль автоматически снята с ${user.tag}`);
+                    
+                    // Уведомление в ЛС (опционально)
+                    await targetMember.send(`✅ Your blacklist in **${guild.name}** has expired.`).catch(() => null);
+                } else {
+                    console.log(`[LOG] У пользователя ${user.tag} уже нет этой роли.`);
+                }
+            } catch (timerErr) {
+                console.error('❌ Ошибка внутри таймера при снятии роли:', timerErr.message);
             }
         }, durationMs);
 
     } catch (err) {
-        console.error(err);
-        message.reply('❌ Error: Check if my role is high enough to manage this user.');
+        console.error('❌ Ошибка команды blacklist:', err);
+        message.reply(`❌ Ошибка: ${err.message}. Проверь права бота и иерархию ролей.`);
     }
 }
 
