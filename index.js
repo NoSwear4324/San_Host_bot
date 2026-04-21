@@ -822,7 +822,7 @@ client.on(Events.MessageCreate, async (message) => {
             return message.reply({ embeds: [embed], ephemeral: true });
         }
 
-    // === ADMIN: blacklist ===
+// === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
         return message.react('🚫');
@@ -832,65 +832,67 @@ if (cmd === 'blacklist') {
     if (!user) return message.reply('❌ Usage: `-blacklist @user <duration> [reason]`');
 
     const guild = message.guild;
-    const member = guild.members.cache.get(user.id) || await guild.members.fetch(user.id).catch(() => null);
-    if (!member) return message.reply('❌ User not found in this server.');
+    const member = await guild.members.fetch(user.id).catch(() => null);
+    if (!member) return message.reply('❌ User not found');
 
     const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
-    if (!role) return message.reply('❌ Blacklist role not configured.');
+    if (!role) return message.reply('❌ Blacklist role not found');
 
     // Parse duration
     const durationStr = args[1];
-    let durationMs = 24 * 60 * 60 * 1000; // Default 1d
-    let durationText = '1d';
+    if (!durationStr) return message.reply('❌ Specify duration: `1m`, `2h`, `1d`');
     
-    if (durationStr) {
-        const match = durationStr.match(/^(\d+)([mhd])?$/i);
-        if (!match) return message.reply('❌ Invalid duration. Use: `10m`, `2h`, `1d`');
-        const amount = parseInt(match[1]);
-        const unit = match[2]?.toLowerCase() || 'm';
-        
-        if (unit === 'm') {
-            durationMs = amount * 60 * 1000;
-            durationText = `${amount}m`;
-        } else if (unit === 'h') {
-            durationMs = amount * 60 * 60 * 1000;
-            durationText = `${amount}h`;
-        } else if (unit === 'd') {
-            durationMs = amount * 24 * 60 * 60 * 1000;
-            durationText = `${amount}d`;
-        }
+    const match = durationStr.match(/^(\d+)([mhd])$/i);
+    if (!match) return message.reply('❌ Invalid format. Use: `10m`, `2h`, `1d`');
+    
+    const amount = parseInt(match[1]);
+    const unit = match[2].toLowerCase();
+    
+    let durationMs;
+    let durationText;
+    
+    if (unit === 'm') {
+        durationMs = amount * 60 * 1000;
+        durationText = `${amount}m`;
+    } else if (unit === 'h') {
+        durationMs = amount * 60 * 60 * 1000;
+        durationText = `${amount}h`;
+    } else if (unit === 'd') {
+        durationMs = amount * 24 * 60 * 60 * 1000;
+        durationText = `${amount}d`;
     }
 
-    // Parse reason
     const reason = args.slice(2).join(' ') || 'No reason';
 
     try {
+        // Add role
         await member.roles.add(role);
         
         // Set timeout to remove role
-        const timeoutId = setTimeout(async () => {
+        setTimeout(async () => {
             try {
-                const mem = await guild.members.fetch(user.id).catch(() => null);
-                if (mem && mem.roles.cache.has(HOST_BLACKLIST_ROLE)) {
-                    await mem.roles.remove(role);
+                const member = await guild.members.fetch(user.id).catch(() => null);
+                if (member && member.roles.cache.has(role.id)) {
+                    await member.roles.remove(role);
+                    console.log(`✅ Removed blacklist from ${user.tag}`);
                 }
-            } catch (e) {
-                console.error('Failed to auto-remove blacklist:', e.message);
+            } catch (err) {
+                console.error('Error removing role:', err.message);
             }
         }, durationMs);
 
-        // Send message in screenshot format
+        // Send message
         const embed = new EmbedBuilder()
-            .setColor(0xED4245) // Red color
+            .setColor(0xED4245)
             .setDescription(`🔒 ${user} has been host blacklisted for **${durationText}**.\n**Reason:** ${reason}`)
             .setTimestamp();
 
         await message.channel.send({ embeds: [embed] });
-        await message.delete(); // Delete command message
+        await message.delete();
         
     } catch (err) {
         console.error('Blacklist error:', err.message);
-        return message.reply('❌ Failed to blacklist user. Check permissions.');
+        return message.reply('❌ Failed to blacklist user');
     }
 }
 
