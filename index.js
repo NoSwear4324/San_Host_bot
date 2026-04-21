@@ -24,6 +24,15 @@ async function connectWithRetry() {
 }
 connectWithRetry();
 
+const blacklistSchema = new mongoose.Schema({
+    userId: String,
+    guildId: String,
+    roleId: String,
+    expiresAt: Number
+});
+
+module.exports = mongoose.model('Blacklist', blacklistSchema);
+const Blacklist = require('./models/Blacklist');
 mongoose.connection.on('error', err => console.error('🔴 MongoDB error:', err.message));
 mongoose.connection.on('disconnected', () => console.warn('⚠️ MongoDB disconnected'));
 
@@ -824,11 +833,10 @@ client.on(Events.MessageCreate, async (message) => {
 
 const { EmbedBuilder } = require('discord.js');
 
-const { EmbedBuilder } = require('discord.js');
-
 // === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
-    // 1. Проверка прав модератора
+
+    // Проверка прав
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
         return message.react('🚫');
     }
@@ -837,67 +845,64 @@ if (cmd === 'blacklist') {
     const durationStr = args[1];
     const reason = args.slice(2).join(' ') || 'No reason';
 
-    if (!user) return message.reply('❌ Usage: `-blacklist @user <duration> [reason]`');
-    if (!durationStr) return message.reply('❌ Specify duration: `1m`, `2h`, `1d`');
+    if (!user) return message.reply('❌ Usage: -blacklist @user <duration> [reason]');
+    if (!durationStr) return message.reply('❌ Specify duration: 1m, 2h, 1d');
 
-    // 2. Парсинг времени
+    // Парсинг времени
     const match = durationStr.match(/^(\d+)([mhd])$/i);
-    if (!match) return message.reply('❌ Invalid duration format (e.g. 10m, 2h, 1d)');
+    if (!match) return message.reply('❌ Invalid format (1m, 2h, 1d)');
 
     const amount = parseInt(match[1]);
     const unit = match[2].toLowerCase();
-    const multipliers = { 'm': 60000, 'h': 3600000, 'd': 86400000 };
+
+    const multipliers = { m: 60000, h: 3600000, d: 86400000 };
     const durationMs = amount * multipliers[unit];
 
-    const guild = message.guild;
-    const roleId = HOST_BLACKLIST_ROLE; // Убедись, что это ID (строка)
-    const role = guild.roles.cache.get(roleId);
+    if (durationMs > 2147483647) {
+        return message.reply('❌ Max duration ~24 days');
+    }
 
-    if (!role) return message.reply('❌ Blacklist role not found in cache. Check ID.');
+    const guild = message.guild;
+    const roleId = HOST_BLACKLIST_ROLE;
 
     try {
         const member = await guild.members.fetch(user.id);
-        
-        // 3. Выдача роли
-        await member.roles.add(role, `Blacklist: ${reason}`);
 
-        // Эмбед как на твоем скриншоте
+        // Выдаём роль
+        await member.roles.add(roleId, `Blacklist: ${reason}`);
+
         const embed = new EmbedBuilder()
             .setColor(0xED4245)
-            .setDescription(`🔒 ${user} has been host blacklisted for **${amount}${unit}**.\n**Reason:** ${reason}`);
+            .setDescription(`🔒 ${user} blacklisted for **${amount}${unit}**\nReason: ${reason}`);
 
         await message.channel.send({ embeds: [embed] });
+
         if (message.deletable) await message.delete().catch(() => null);
 
-        console.log(`[LOG] Таймер запущен для ${user.tag} на ${durationMs}ms`);
+        console.log(`[TIMER] ${user.tag} → ${durationMs}ms`);
 
-        // 4. ТАЙМЕР СНЯТИЯ
+        // Таймер снятия
         setTimeout(async () => {
             try {
-                // Пытаемся заново получить объект пользователя, чтобы данные были актуальны
-                const targetMember = await guild.members.fetch(user.id).catch(() => null);
-                
-                if (!targetMember) {
-                    return console.log(`[LOG] Пользователь ${user.id} покинул сервер, снимать роль не с кого.`);
-                }
+                const target = await guild.members.fetch(user.id).catch(() => null);
+                if (!target) return;
 
-                if (targetMember.roles.cache.has(roleId)) {
-                    await targetMember.roles.remove(role, 'Temporary blacklist expired');
-                    console.log(`[SUCCESS] Роль автоматически снята с ${user.tag}`);
-                    
-                    // Уведомление в ЛС (опционально)
-                    await targetMember.send(`✅ Your blacklist in **${guild.name}** has expired.`).catch(() => null);
-                } else {
-                    console.log(`[LOG] У пользователя ${user.tag} уже нет этой роли.`);
-                }
-            } catch (timerErr) {
-                console.error('❌ Ошибка внутри таймера при снятии роли:', timerErr.message);
+                if (!target.roles.cache.has(roleId)) return;
+
+                await target.roles.remove(roleId, 'Blacklist expired');
+
+                console.log(`[SUCCESS] Removed blacklist from ${user.tag}`);
+
+                await target.send(`✅ Your blacklist in **${guild.name}** has expired.`).catch(() => null);
+
+            } catch (err) {
+                console.error('❌ Timer error:', err);
             }
         }, durationMs);
 
     } catch (err) {
-        console.error('❌ Ошибка команды blacklist:', err);
-        message.reply(`❌ Ошибка: ${err.message}. Проверь права бота и иерархию ролей.`);
+        console.error('❌ Command error:', err);
+        message.reply('❌ Error: ' + err.message);
     }
 }
 
