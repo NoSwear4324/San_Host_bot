@@ -824,90 +824,64 @@ client.on(Events.MessageCreate, async (message) => {
 
 // === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
+    // Проверка прав модератора
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
         return message.react('🚫');
     }
-    
+
     const user = message.mentions.users.first();
+    const durationStr = args[1];
+    const reason = args.slice(2).join(' ') || 'No reason';
+
+    // Валидация аргументов
     if (!user) return message.reply('❌ Usage: `-blacklist @user <duration> [reason]`');
+    if (!durationStr) return message.reply('❌ Specify duration: `1m`, `2h`, `1d`');
+
+    const match = durationStr.match(/^(\d+)([mhd])$/i);
+    if (!match) return message.reply('❌ Invalid duration format (e.g. 10m, 2h, 1d)');
+
+    const amount = parseInt(match[1]);
+    const unit = match[2].toLowerCase();
+    const multipliers = { 'm': 60000, 'h': 3600000, 'd': 86400000 };
+    const durationMs = amount * multipliers[unit];
 
     const guild = message.guild;
     const member = await guild.members.fetch(user.id).catch(() => null);
-    if (!member) return message.reply('❌ User not found');
-
     const role = guild.roles.cache.get(HOST_BLACKLIST_ROLE);
+
+    if (!member) return message.reply('❌ User not found');
     if (!role) return message.reply('❌ Blacklist role not found');
 
-    // Parse duration
-    const durationStr = args[1];
-    if (!durationStr) return message.reply('❌ Specify duration: `1m`, `2h`, `1d`');
-    
-    const match = durationStr.match(/^(\d+)([mhd])$/i);
-    if (!match) return message.reply('❌ Invalid format. Use: `10m`, `2h`, `1d`');
-    
-    const amount = parseInt(match[1]);
-    const unit = match[2].toLowerCase();
-    
-    let durationMs;
-    let durationText;
-    
-    if (unit === 'm') {
-        durationMs = amount * 60 * 1000;
-        durationText = `${amount}m`;
-    } else if (unit === 'h') {
-        durationMs = amount * 60 * 60 * 1000;
-        durationText = `${amount}h`;
-    } else if (unit === 'd') {
-        durationMs = amount * 24 * 60 * 60 * 1000;
-        durationText = `${amount}d`;
-    }
-
-    const reason = args.slice(2).join(' ') || 'No reason';
-    const userId = user.id;
-    const roleId = role.id;
-    const guildId = guild.id;
-
     try {
+        // Выдаем роль
         await member.roles.add(role);
-        
-        // Сохраняем переменные для setTimeout
+
+        // Создаем эмбед как на скрине
+        const embed = new EmbedBuilder()
+            .setColor(0xED4245) // Тот самый красный цвет
+            .setDescription(`🔒 ${user} has been host blacklisted for **${amount}${unit}**.\n**Reason:** ${reason}`);
+
+        await message.channel.send({ embeds: [embed] });
+
+        // Удаляем команду модератора для чистоты чата
+        if (message.deletable) await message.delete().catch(() => null);
+
+        // Таймер на снятие роли
         setTimeout(async () => {
             try {
-                const guild = client.guilds.cache.get(guildId);
-                if (!guild) return;
-                
-                const member = await guild.members.fetch(userId).catch(() => null);
-                if (!member) return;
-                
-                const role = guild.roles.cache.get(roleId);
-                if (!role) return;
-                
-                if (member.roles.cache.has(roleId)) {
-                    await member.roles.remove(role);
-                    console.log(`✅ Auto-removed blacklist from ${userId}`);
-                    
-                    // Optional: notify user
-                    try {
-                        const user = await client.users.fetch(userId);
-                        await user.send(`✅ Your host blacklist has been removed.`);
-                    } catch (e) {}
+                const refreshMember = await guild.members.fetch(user.id).catch(() => null);
+                if (refreshMember && refreshMember.roles.cache.has(role.id)) {
+                    await refreshMember.roles.remove(role);
+                    await user.send(`✅ Your host blacklist in **${guild.name}** has expired.`).catch(() => null);
                 }
             } catch (err) {
-                console.error('❌ Error auto-removing blacklist:', err.message);
+                console.error('Auto-unblacklist error:', err.message);
             }
         }, durationMs);
 
-        const embed = new EmbedBuilder()
-            .setColor(0xED4245)
-            .setDescription(`🔒 ${user} has been host blacklisted for **${durationText}**.\n**Reason:** ${reason}`)
-            .setTimestamp();
-
-        await message.channel.send({ embeds: [embed] });
-        await message.delete();
-        
     } catch (err) {
-        console.error('Blacklist error:', err.message);
-        return message.reply('❌ Failed to blacklist user');
+        console.error(err);
+        message.reply('❌ Error: Check if my role is high enough to manage this user.');
     }
 }
 
