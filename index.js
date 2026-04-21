@@ -824,6 +824,8 @@ client.on(Events.MessageCreate, async (message) => {
 
 const { EmbedBuilder } = require('discord.js');
 
+const { EmbedBuilder } = require('discord.js');
+
 // === ADMIN: blacklist ===
 if (cmd === 'blacklist') {
     // 1. Проверка прав модератора
