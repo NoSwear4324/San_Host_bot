@@ -540,22 +540,22 @@ for (const game of hiloGames) {
 console.log(`📈 Loaded ${activeHiLo.size} active Hi-Lo games`);
 
         // Restore overlap cooldowns from recent events (by channel)
-        const recentEvents = await Event.find({ active: true })
-            .sort({ createdAt: -1 })
-            .limit(20);
+        // const recentEvents = await Event.find({ active: true })
+        //     .sort({ createdAt: -1 })
+        //     .limit(20);
 
-        for (const ev of recentEvents) {
-            const elapsed = Date.now() - new Date(ev.createdAt).getTime();
-            if (elapsed < OVERLAP_COOLDOWN_MS) {
-                overlapCooldowns.set(ev.channelId, {
-                    hostId: ev.host,
-                    timestamp: new Date(ev.createdAt).getTime(),
-                    channelId: ev.channelId,
-                    robux: ev.robux
-                });
-            }
-        }
-        console.log(`⏳ Restored ${overlapCooldowns.size} overlap cooldowns`);
+        // for (const ev of recentEvents) {
+        //     const elapsed = Date.now() - new Date(ev.createdAt).getTime();
+        //     if (elapsed < OVERLAP_COOLDOWN_MS) {
+        //         overlapCooldowns.set(ev.channelId, {
+        //             hostId: ev.host,
+        //             timestamp: new Date(ev.createdAt).getTime(),
+        //             channelId: ev.channelId,
+        //             robux: ev.robux
+        //         });
+        //     }
+        // }
+        // console.log(`⏳ Restored ${overlapCooldowns.size} overlap cooldowns`);
 
         client.user.setPresence({
             activities: [{ name: '-help • RBX Events & Games', type: ActivityType.Watching }],
@@ -631,26 +631,26 @@ client.on(Events.MessageCreate, async (message) => {
             }
 
             // Check overlap for this channel
-            const overlap = overlapCooldowns.get(message.channel.id);
-            if (overlap && (Date.now() - overlap.timestamp) < OVERLAP_COOLDOWN_MS) {
-                const remaining = OVERLAP_COOLDOWN_MS - (Date.now() - overlap.timestamp);
-                const minutes = Math.floor(remaining / 60000);
-                const seconds = Math.floor((remaining % 60000) / 1000);
+            // const overlap = overlapCooldowns.get(message.channel.id);
+            // if (overlap && (Date.now() - overlap.timestamp) < OVERLAP_COOLDOWN_MS) {
+            //     const remaining = OVERLAP_COOLDOWN_MS - (Date.now() - overlap.timestamp);
+            //     const minutes = Math.floor(remaining / 60000);
+            //     const seconds = Math.floor((remaining % 60000) / 1000);
 
-                const overlapEmbed = new EmbedBuilder()
-                    .setColor(0xFF0000)
-                    .setTitle('⛔ OVERLAP DETECTED')
-                    .setDescription(`Someone already created an event in this channel recently!`)
-                    .addFields(
-                        { name: '👤 Last host', value: `<@${overlap.hostId}>`, inline: true },
-                        { name: '💰 Amount', value: `${overlap.robux} R$`, inline: true },
-                        { name: '⏳ Remaining', value: `${minutes} min. ${seconds} sec.`, inline: true }
-                    )
-                    .setFooter({ text: 'Wait for the cooldown to end or create in a different channel!' })
-                    .setTimestamp();
+            //     const overlapEmbed = new EmbedBuilder()
+            //         .setColor(0xFF0000)
+            //         .setTitle('⛔ OVERLAP DETECTED')
+            //         .setDescription(`Someone already created an event in this channel recently!`)
+            //         .addFields(
+            //             { name: '👤 Last host', value: `<@${overlap.hostId}>`, inline: true },
+            //             { name: '💰 Amount', value: `${overlap.robux} R$`, inline: true },
+            //             { name: '⏳ Remaining', value: `${minutes} min. ${seconds} sec.`, inline: true }
+            //         )
+            //         .setFooter({ text: 'Wait for the cooldown to end or create in a different channel!' })
+            //         .setTimestamp();
 
-                return message.reply({ embeds: [overlapEmbed] });
-            }
+            //     return message.reply({ embeds: [overlapEmbed] });
+            // }
 
             let robux = parseInt(args[0]) || cfg.min;
             if (isNaN(robux) || robux < cfg.min || robux > cfg.max) {
@@ -706,12 +706,12 @@ client.on(Events.MessageCreate, async (message) => {
             });
 
             // Set overlap cooldown for this channel
-            overlapCooldowns.set(message.channel.id, {
-                hostId: message.author.id,
-                timestamp: Date.now(),
-                channelId: message.channel.id,
-                robux
-            });
+            // overlapCooldowns.set(message.channel.id, {
+            //     hostId: message.author.id,
+            //     timestamp: Date.now(),
+            //     channelId: message.channel.id,
+            //     robux
+            // });
 
             await msg.react('👍').catch(console.error);
             await msg.react('👎').catch(console.error);
