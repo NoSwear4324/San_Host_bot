@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, Events, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, Events, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, REST, Routes, ApplicationCommandOptionType } = require('discord.js');
 const mongoose = require('mongoose');
 
 // ────────────────────────────────────────────────
@@ -141,7 +141,7 @@ const PING_ROLES = {
     ultra: '1480533781612855437', ultimate: '1480533827108602089', extreme: '1480533870909587508', godly: '1480533912127017043'
 };
 
-const ADMIN_ROLES = ['1475552294203424880', '1475552827626619050', '1493251166719578233', '1495665543234060409', '1495665703670255626'];
+const ADMIN_ROLES = ['1475552294203424880', '1475552827626619050', '1493251166719578233', '1495665543234060409', '1495665703670255626', '1482496579033108591'];
 const HOST_BLACKLIST_ROLE = '1482828757965340978'; // Replace with actual blacklist role ID
 
 // Tiers in ascending order (higher tier can host in lower tier channels)
@@ -719,7 +719,7 @@ client.on(Events.MessageCreate, async (message) => {
         }
 
         // === STATUS ===
-        if (cmd === 'status') {
+        if (cmd === 'h') {
             const target = message.mentions.users.first() || message.author;
             const stats = await getStats(target.id);
             if (!stats) return message.reply('❌ Could not fetch stats');
@@ -811,9 +811,9 @@ client.on(Events.MessageCreate, async (message) => {
                         inline: true
                     })),
                     { name: '\u200b', value: '\u200b', inline: true },
-                    { name: '📊 Statistics', value: '`-status [@user]` — View host statistics\n`-toprating` — Top hosts by rating', inline: false },
+                    { name: '📊 Statistics', value: '`-h [@user]` — View host statistics\n`-toprating` — Top hosts by rating', inline: false },
                     { name: '🎮 Games', value: '`-ttt @user` — Tic-Tac-Toe\n`-battle [time]` — Battle\n`-hilo [time]` — HILO', inline: false },
-                    { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count\n`-blacklist @user <time> <reason>`', inline: false },
+                    { name: '🔧 Admin Commands', value: '`-setstats @user <+/-number>` — Adjust Robux\n`-seteventstats @user <type> <number>` — Adjust event count\n`-bl @user <time> <reason>`', inline: false },
                     { name: '❓ Help', value: '`-help` — Show this message', inline: false }
                 )
                 .setFooter({ text: `Requested by ${message.author.tag}` })
@@ -823,7 +823,7 @@ client.on(Events.MessageCreate, async (message) => {
         }
 
 // === ADMIN: blacklist ===
-if (cmd === 'blacklist') {
+if (cmd === 'bl') {
     if (!message.member?.roles.cache.some(r => ADMIN_ROLES.includes(r.id))) {
         return message.react('🚫');
     }
@@ -833,7 +833,7 @@ if (cmd === 'blacklist') {
     const reason = args.slice(2).join(' ') || 'No reason';
 
     if (!user || !durationStr) {
-        return message.reply('❌ Usage: `-blacklist @user 30s reason`');
+        return message.reply('❌ Usage: `-bl @user 30s reason`');
     }
 
     const guild = message.guild;
